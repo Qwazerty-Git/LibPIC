@@ -34,6 +34,14 @@ int main(void)
     TEST_ASSERT(!timer_is_running(&timer));
     TEST_ASSERT(!timer_update(&timer, 30));
 
+    /* Auto reload timer resynchronizes in one step after missed periods,
+       instead of requiring one timer_update call per missed period. */
+    timer_init(&timer, 10, true);
+    timer_start(&timer, 0);
+    TEST_ASSERT(timer_update(&timer, 55));
+    TEST_ASSERT(!timer_update(&timer, 56));
+    TEST_ASSERT(timer_update(&timer, 60));
+
     printf("test_timer: OK\n");
     return TEST_RESULT();
 }

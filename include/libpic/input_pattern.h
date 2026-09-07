@@ -50,6 +50,12 @@ void input_pattern_init(input_pattern_t *pattern, input_t *input,
  * @param pattern Détecteur à mettre à jour.
  * @param now_ms  Instant courant en millisecondes.
  * @return Le motif détecté lors de cet appel, ou INPUT_PATTERN_NONE.
+ *
+ * @note Un appui court n'est confirmé (INPUT_PATTERN_SHORT_PRESS) qu'une fois
+ *       la fenêtre de double appui écoulée sans second appui. Cette
+ *       confirmation nécessite donc que input_pattern_update() continue
+ *       d'être appelée périodiquement même après le relâchement de l'entrée,
+ *       jusqu'à expiration de la fenêtre.
  */
 input_pattern_result_t input_pattern_update(input_pattern_t *pattern, time_ms_t now_ms);
 

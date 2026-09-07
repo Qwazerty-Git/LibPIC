@@ -40,6 +40,11 @@ void timer_stop(timer_t *timer);
  * @param timer  Temporisation à mettre à jour.
  * @param now_ms Instant courant en millisecondes.
  * @return true si la temporisation vient d'expirer lors de cet appel.
+ *
+ * @note Pour une temporisation à redémarrage automatique (auto_reload),
+ *       si plusieurs périodes ont été manquées entre deux appels, l'instant
+ *       de départ est resynchronisé en une seule fois (les périodes
+ *       manquées ne sont pas rejouées individuellement).
  */
 bool timer_update(timer_t *timer, time_ms_t now_ms);
 
