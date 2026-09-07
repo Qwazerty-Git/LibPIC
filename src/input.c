@@ -1,66 +1,125 @@
-#include "libpic/input.h"
+#include "input.h"
+#include <stddef.h>
 
-void input_init(input_t *input, read_pin_fn read, bool active_high, time_ms_t debounce_delay_ms)
+// Lecture de l'état physique du GPIO
+static bool input_read_physical(const Input_t *input)
 {
-    if (input == NULL) {
-        return;
-    }
+    if (input == NULL || input->mapping.port == NULL) return false;
+    return (*input->mapping.port & input->mapping.mask) != 0;
+}
 
-    input->read = read;
+bool input_create(Input_t *input, volatile uint8_t *port, uint8_t mask, bool active_high, uint16_t debounce_rising_ticks, uint16_t debounce_falling_ticks)
+{
+    if (input == NULL || port == NULL) return false;
+
+    input->mapping.port = port;
+    input->mapping.mask = mask;
     input->active_high = active_high;
-    input->debounce_delay_ms = debounce_delay_ms;
-    input->raw_state = active_high ? STATE_LOW : STATE_HIGH;
-    input->state = false;
-    input->previous_state = false;
-    input->last_change_time = 0;
+    input->enabled = true;
+    input->debounce_rising_ticks = debounce_rising_ticks;
+    input->debounce_falling_ticks = debounce_falling_ticks;
+
+    input->receiver = NULL;
+    input->receiver_context = NULL;
+
+    // État initial
+    input->state_raw = input_read_physical(input);
+    input->state_raw_debounced = input->state_raw;
+    input->counter = 0;
+
+    return true;
 }
 
-void input_update(input_t *input, time_ms_t now_ms)
+void input_set_callback(Input_t *input, InputReceiver receiver, void *context)
 {
-    state_t raw;
-    bool logical_raw;
+    if (input == NULL || input->receiver == NULL || receiver == NULL || context == NULL ) return;
+    input->receiver = receiver;
+    input->receiver_context = context;
+}
 
-    if (input == NULL || input->read == NULL) {
-        return;
+InputEvent_t input_update(Input_t *input, uint16_t ticks)
+{
+    InputEvent_t event = {0};
+
+    if (input == NULL || !input->enabled) return event;
+
+    // Lire l'état physique actuel
+    input->state_raw = input_read_physical(input);
+
+    // Appliquer active_high pour obtenir l'état logique
+    bool state_logical = (input->state_raw == input->active_high);
+
+    // La fiabilité est bonne si on n'a pas "sauté" le debounce
+    uint16_t max_debounce = (input->debounce_rising_ticks > input->debounce_falling_ticks)
+                            ? input->debounce_rising_ticks
+                                                : input->debounce_falling_ticks;
+
+    bool reliable = (ticks <= max_debounce);
+
+    // Debounce : attendre que l'état soit stable pendant debounce_ticks
+    if (state_logical != input->state_raw_debounced) {
+        input->counter += ticks;
+
+        // Le temps de debounce dépend du sens du changement (rising ou falling logique)
+        uint16_t required_ticks = state_logical ? input->debounce_rising_ticks
+                                                : input->debounce_falling_ticks;
+
+        if (input->counter >= required_ticks) {
+            // Le changement est validé
+            input->state_raw_debounced = state_logical;
+
+            // Détecter le front
+            if (state_logical) {
+                event.rising = true;   // Front montant logique (appui)
+            } else {
+                event.falling = true;  // Front descendant logique (relâchement)
+            }
+
+            event.reliable = reliable;
+
+            // Appeler le callback si enregistré (uniquement si événement)
+            if (input->receiver != NULL && input->receiver_context !=NULL) {
+                input->receiver(input->receiver_context, event);
+            }
+
+            // Remettre le compteur à zéro pour la prochaine transition
+            input->counter = 0;
+        }
+    } else {
+        // État stable, pas de comptage
+        input->counter = 0;
     }
 
-    raw = input->read();
-    input->previous_state = input->state;
+    return event;
+}
 
-    if (raw != input->raw_state) {
-        input->raw_state = raw;
-        input->last_change_time = now_ms;
-    }
+void input_enable(Input_t *input, bool enable)
+{
+    if (input == NULL) return;
+    input->enabled = enable;
 
-    if ((time_ms_t)(now_ms - input->last_change_time) >= input->debounce_delay_ms) {
-        logical_raw = input->active_high ? (raw == STATE_HIGH) : (raw == STATE_LOW);
-        input->state = logical_raw;
+    // Reset de l'état pour éviter de faux événements après réactivation
+    if (enable) {
+        input->state_raw = input_read_physical(input);
+        input->state_raw_debounced = input->state_raw;
+        input->counter = 0;
     }
 }
 
-bool input_is_active(const input_t *input)
+bool input_is_physically_high(const Input_t *input)
 {
-    if (input == NULL) {
-        return false;
-    }
-
-    return input->state;
+    if (input == NULL || input->mapping.port == NULL) return false;
+    return (*input->mapping.port & input->mapping.mask) != 0;  // ← lecture directe
 }
 
-bool input_rising_edge(const input_t *input)
+bool input_is_active(const Input_t *input)
 {
-    if (input == NULL) {
-        return false;
-    }
-
-    return input->state && !input->previous_state;
+    if (input == NULL) return false;
+    return input->state_raw_debounced;  // ← état validé par le debounce
 }
 
-bool input_falling_edge(const input_t *input)
+bool input_state_stable(const Input_t *input)
 {
-    if (input == NULL) {
-        return false;
-    }
-
-    return !input->state && input->previous_state;
+    if (input == NULL) return false;
+    return input->state_raw_debounced == input->active_high;  // État stable logique (après debounce)
 }

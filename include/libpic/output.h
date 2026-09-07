@@ -1,43 +1,102 @@
-/**
- * @file output.h
- * @brief Gestion d'une sortie numérique.
- */
-#ifndef LIBPIC_OUTPUT_H
-#define LIBPIC_OUTPUT_H
+/*
+output.h
 
+Créé le: 19/08/2026
+Créé par: Qwazerty
+
+But :
+    Fournit une interface pour gérer des sorties binaires individuelles.
+    Chaque Output_t représente UNE sortie logique, mappée sur un GPIO physique.
+    Le module gère la logique active_high (niveau actif haut ou bas).
+
+Fonctionnement :
+    - L'utilisateur crée un Output_t avec output_create().
+    - Il modifie l'état logique avec output_on(), output_off(), etc.
+    - Le module calcule le niveau physique en fonction de active_high.
+    - L'écriture GPIO peut être immédiate (fonction output_update_gpio()).
+
+Exemple d'utilisation :
+
+    #include "output.h"
+
+    // Déclaration statique (pas de malloc)
+    Output_t led_verte;
+
+    // Initialisation : PORTB bit 0, actif à l'état HAUT, éteinte au départ
+    output_create(&led_verte, (volatile uint8_t*)&PORTB, 0x01, true, false);
+
+    // Dans la boucle principale :
+    output_on(&led_verte);   // Allume la LED
+    output_off(&led_verte);  // Éteint la LED
+    output_toggle(&led_verte);  // Inverse l'état
+
+Méthodes exposées :
+
+    - output_create : 
+        Initialise une sortie avec son mapping GPIO, sa polarité et son état par défaut.
+
+    - output_on : 
+        Met l'état logique à 1 (haut). Le GPIO est mis à jour en fonction de active_high.
+
+    - output_off : 
+        Met l'état logique à 0 (bas). Le GPIO est mis à jour en fonction de active_high.
+
+    - output_toggle : 
+        Inverse l'état logique actuel. Retourne le nouvel état.
+
+    - output_set_state : 
+        Définit un état logique spécifique (true ou false).
+
+    - output_enable : 
+        Active/désactive la sortie. Si désactivée, l'état peut être modifié
+        mais le GPIO n'est pas écrit.
+
+    - output_update_gpio : 
+        Force l'écriture du GPIO en fonction de l'état et de active_high.
+        Utile si on a modifié l'état sans auto-update.
+
+    - output_is_on : 
+        Retourne l'état LOGIQUE actuel (true si allumé).
+
+    - output_is_physically_high : 
+        Retourne l'état PHYSIQUE du GPIO (true si le niveau est haut).
+        Diffère de output_is_on si active_high = false.
+
+Note :
+    - Les variables GPIO doivent être déclarées volatile (ex: *(volatile uint8_t*)&PORTB).
+    - L'écriture GPIO est immédiate à chaque changement d'état.
+*/
+
+#ifndef OUTPUT_H
+#define OUTPUT_H
+
+#include <stdint.h>
+#include <stdbool.h>
 #include "commun.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-/** Représente une sortie numérique unique. */
 typedef struct {
-    write_pin_fn write;  /**< Fonction d'écriture de la broche physique. */
-    bool active_high;    /**< true si l'état actif correspond à STATE_HIGH. */
-    bool state;          /**< État logique courant (true = actif). */
-} output_t;
+    GPIO_t mapping;
+    bool active_high;
+    bool state;
+    bool enabled;
+} Output_t;
 
-/**
- * Initialise une sortie.
- *
- * @param output      Sortie à initialiser.
- * @param write       Fonction d'écriture de la broche physique.
- * @param active_high true si la sortie est active à l'état haut.
- */
-void output_init(output_t *output, write_pin_fn write, bool active_high);
+// Initialisation
+bool output_create(Output_t *output, volatile uint8_t *port, uint8_t mask, bool active_high, bool default_state);
 
-/** Positionne l'état logique de la sortie (true = actif). */
-void output_set(output_t *output, bool active);
+// Actions sur le maillon
+void output_on(Output_t *output);
+void output_off(Output_t *output);
+bool output_toggle(Output_t *output);
+void output_set_state(Output_t *output, bool state);
+void output_enable(Output_t *output, bool enable);
 
-/** Inverse l'état logique de la sortie. */
-void output_toggle(output_t *output);
+// Écriture GPIO
+void output_update_gpio(Output_t *output);
 
-/** Retourne true si la sortie est actuellement active. */
-bool output_is_active(const output_t *output);
+// Lectures
+bool output_is_on(const Output_t *output);
+bool output_is_physically_high(const Output_t *output);
 
-#ifdef __cplusplus
-}
+
 #endif
-
-#endif /* LIBPIC_OUTPUT_H */

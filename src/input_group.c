@@ -1,68 +1,75 @@
-#include "libpic/input_group.h"
+#include <stdbool.h>
 #include <stddef.h>
+#include "input_group.h"
+#include "input_pattern.h"
 
-void input_group_init(input_group_t *group, input_t **inputs, uint8_t count)
+bool input_group_create(InputGroup_t *group)
 {
-    if (group == NULL) {
-        return;
+    if (group == NULL) return 0;
+
+    group->count = 0;
+    for (uint8_t i = 0; i < INPUT_GROUP_MAX; i++) {
+        group->inputs[i] = NULL;
+        group->matchers[i] = NULL;
     }
 
-    group->inputs = inputs;
-    group->count = count;
+    return 1;
 }
 
-void input_group_update(input_group_t *group, time_ms_t now_ms)
+bool input_group_add_input(InputGroup_t *group, Input_t *input)
 {
-    uint8_t i;
+    if (group == NULL || input == NULL) return false;
+    if (group->count >= INPUT_GROUP_MAX) return false;
+    
+    group->inputs[group->count] = input;
+    group->matchers[group->count] = NULL;   // ← pas de matcher
+    group->count++;
+    
+    return true;
+}
 
-    if (group == NULL || group->inputs == NULL) {
-        return;
-    }
+bool input_group_add_matcher(InputGroup_t *group, MatcherPatternGlobal_t *matcher)
+{
+    if (group == NULL || matcher == NULL || matcher->input == NULL) return false;
+    if (group->count >= INPUT_GROUP_MAX) return false;
 
-    for (i = 0; i < group->count; i++) {
+    group->inputs[group->count] = matcher->input;   // ← on récupère l'input depuis le matcher
+    group->matchers[group->count] = matcher;
+    group->count++;
+
+    return true;
+}
+
+void input_group_update_all(InputGroup_t *group, uint16_t ticks)
+{
+    if (group == NULL) return;
+
+    for (uint8_t i = 0; i < group->count; i++) {
         if (group->inputs[i] != NULL) {
-            input_update(group->inputs[i], now_ms);
+            // Si un matcher est associé, c'est lui qui gère l'input
+            // (il appelle input_update en interne)
+            if (group->matchers[i] != NULL) {
+                pattern_matcher_update(group->matchers[i], ticks);
+            }
+            // Sinon, on met à jour l'input directement
+            else {
+                input_update(group->inputs[i], ticks);
+            }
         }
     }
 }
 
-bool input_group_any_active(const input_group_t *group)
+uint32_t input_group_get_state(const InputGroup_t *group)
 {
-    return input_group_active_count(group) > 0;
-}
+    uint32_t state = 0;
 
-bool input_group_all_active(const input_group_t *group)
-{
-    if (group == NULL || group->inputs == NULL || group->count == 0) {
-        return false;
-    }
+    if (group == NULL) return 0;
 
-    return input_group_active_count(group) == group->count;
-}
-
-uint8_t input_group_active_count(const input_group_t *group)
-{
-    uint8_t i;
-    uint8_t count = 0;
-
-    if (group == NULL || group->inputs == NULL) {
-        return 0;
-    }
-
-    for (i = 0; i < group->count; i++) {
+    for (uint8_t i = 0; i < group->count; i++) {
         if (group->inputs[i] != NULL && input_is_active(group->inputs[i])) {
-            count++;
+            state |= (1UL << i);
         }
     }
 
-    return count;
-}
-
-input_t *input_group_get(const input_group_t *group, uint8_t index)
-{
-    if (group == NULL || group->inputs == NULL || index >= group->count) {
-        return NULL;
-    }
-
-    return group->inputs[index];
+    return state;
 }

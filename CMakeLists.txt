@@ -4,11 +4,11 @@ project(LibPIC C)
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
-if(NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE Debug)
-endif()
+# if(NOT CMAKE_BUILD_TYPE)
+#     set(CMAKE_BUILD_TYPE Debug)
+# endif()
 
-add_compile_options(-Wall -Wextra)
+# add_compile_options(-Wall -Wextra)
 
 add_library(libpic STATIC
     src/input.c

@@ -1,49 +1,33 @@
-/**
- * @file input_group.h
- * @brief Gestion d'un groupe d'entrées numériques.
- */
-#ifndef LIBPIC_INPUT_GROUP_H
-#define LIBPIC_INPUT_GROUP_H
+#ifndef INPUT_GROUP_H
+#define INPUT_GROUP_H
 
-#include "commun.h"
+#include <stdbool.h>
+#include <stdint.h>
 #include "input.h"
+#include "input_pattern.h"
 
-#ifdef __cplusplus
-extern "C" {
+#ifndef INPUT_GROUP_MAX
+    #define INPUT_GROUP_MAX 16
 #endif
 
-/** Représente un groupe d'entrées, utile pour des opérations groupées. */
 typedef struct {
-    input_t **inputs;  /**< Tableau de pointeurs vers les entrées du groupe. */
-    uint8_t count;      /**< Nombre d'entrées dans le groupe. */
-} input_group_t;
+    Input_t *inputs[INPUT_GROUP_MAX];
+    MatcherPatternGlobal_t *matchers[INPUT_GROUP_MAX];   // NULL si pas de matcher
+    uint8_t count;
+} InputGroup_t;
 
-/**
- * Initialise un groupe d'entrées.
- *
- * @param group  Groupe à initialiser.
- * @param inputs Tableau de pointeurs vers les entrées (doit rester valide).
- * @param count  Nombre d'entrées du tableau.
- */
-void input_group_init(input_group_t *group, input_t **inputs, uint8_t count);
+// Initialisation
+bool input_group_create(InputGroup_t *group);
 
-/** Met à jour toutes les entrées du groupe. */
-void input_group_update(input_group_t *group, time_ms_t now_ms);
+// Ajout d'un input ou d'un matcher
+bool input_group_add_input(InputGroup_t *group, Input_t *input);
+bool input_group_add_matcher(InputGroup_t *group, MatcherPatternGlobal_t *matcher);
 
-/** Retourne true si au moins une entrée du groupe est active. */
-bool input_group_any_active(const input_group_t *group);
+// Mise à jour de tous les inputs (et leurs matchers)
+void input_group_update_all(InputGroup_t *group, uint16_t ticks);
 
-/** Retourne true si toutes les entrées du groupe sont actives. */
-bool input_group_all_active(const input_group_t *group);
+// Lecture groupée : retourne l'état stable de chaque input sur un bit
+// bit 0 = inputs[0], bit 1 = inputs[1], etc.
+uint32_t input_group_get_state(const InputGroup_t *group);
 
-/** Retourne le nombre d'entrées actives dans le groupe. */
-uint8_t input_group_active_count(const input_group_t *group);
-
-/** Retourne un pointeur vers l'entrée à l'index donné, ou NULL si hors limites. */
-input_t *input_group_get(const input_group_t *group, uint8_t index);
-
-#ifdef __cplusplus
-}
 #endif
-
-#endif /* LIBPIC_INPUT_GROUP_H */

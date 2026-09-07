@@ -1,56 +1,90 @@
-/**
- * @file input.h
- * @brief Gestion d'une entrée numérique avec anti-rebond (debounce).
- */
-#ifndef LIBPIC_INPUT_H
-#define LIBPIC_INPUT_H
+    /*
+    input.h
 
+    Créé le: 19/08/2026
+    Créé par: Qwazerty
+
+    But : 
+        Fournit une interface pour gérer des entrées binaires avec debounce.
+        Chaque Input_t représente UNE entrée logique, mappée sur un GPIO physique.
+        Le module gère :
+            - Le debounce (élimination des rebonds mécaniques)
+            - La détection de front (montant, descendant)
+            - La lecture de l'état stable
+
+    Fonctionnement :
+        - L'utilisateur crée un Input_t avec input_create().
+        - Il appelle input_update() régulièrement (ex: toutes les 1ms) avec les ticks écoulés.
+        - Le module filtre les changements (debounce) et retourne les fronts détectés.
+        - Un callback optionnel peut être enregistré via input_set_callback().
+
+    Exemple d'utilisation :
+        #include "input.h"
+
+        Input_t bouton;
+        input_create(&bouton, (volatile uint8_t*)&PORTB, 0x10, false, 20, 50);
+
+        // Dans la boucle principale (appelée toutes les 1ms) :
+        InputEvent_t event = input_update(&bouton, 1);
+        if (event.rising) {
+            // Le bouton vient d'être pressé
+        }
+        if (event.falling) {
+            // Le bouton vient d'être relâché
+        }
+    */
+
+#ifndef INPUT_H
+#define INPUT_H
+
+#include <stdint.h>
+//#include <stddef.h>
+#include <stdbool.h>
 #include "commun.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-/** Représente une entrée numérique unique. */
+// Événement retourné par input_update
 typedef struct {
-    read_pin_fn read;              /**< Fonction de lecture de la broche physique. */
-    bool active_high;              /**< true si l'état actif correspond à STATE_HIGH. */
-    time_ms_t debounce_delay_ms;   /**< Délai d'anti-rebond, en millisecondes. */
-    state_t raw_state;             /**< Dernier état brut lu sur la broche. */
-    bool state;                    /**< État logique stabilisé (true = actif). */
-    bool previous_state;           /**< État logique stabilisé lors du précédent update. */
-    time_ms_t last_change_time;    /**< Instant du dernier changement d'état brut détecté. */
-} input_t;
+    bool rising;    // Front montant détecté (appui)
+    bool falling;   // Front descendant détecté (relâchement)
+    bool reliable;  // true si ticks <= debounce_max (le debounce a un sens)
+} InputEvent_t;
 
-/**
- * Initialise une entrée.
- *
- * @param input             Entrée à initialiser.
- * @param read              Fonction de lecture de la broche physique.
- * @param active_high       true si l'entrée est active à l'état haut.
- * @param debounce_delay_ms Délai d'anti-rebond en millisecondes.
- */
-void input_init(input_t *input, read_pin_fn read, bool active_high, time_ms_t debounce_delay_ms);
+// Définition du callback (optionnel)
+typedef void (*InputReceiver)(void *context, const InputEvent_t event);
 
-/**
- * Met à jour l'état de l'entrée. Doit être appelée périodiquement.
- *
- * @param input  Entrée à mettre à jour.
- * @param now_ms Instant courant en millisecondes.
- */
-void input_update(input_t *input, time_ms_t now_ms);
+typedef struct {
+    // Configuration publique
+    GPIO_t mapping;
+    bool active_high;
+    bool enabled;
+    uint16_t debounce_rising_ticks;   // Ticks pour valider un front montant
+    uint16_t debounce_falling_ticks;  // Ticks pour valider un front descendant
 
-/** Retourne true si l'entrée est actuellement active (stabilisée). */
-bool input_is_active(const input_t *input);
+    // Callback optionnel
+    InputReceiver receiver;
+    void *receiver_context;
 
-/** Retourne true si l'entrée vient de passer de inactive à active. */
-bool input_rising_edge(const input_t *input);
+    // Variables internes (à ne pas modifier)
+    bool state_raw_debounced;          // État validé après debounce
+    bool state_raw;             // Dernière lecture brute
+    uint16_t counter;           // Compteur de debounce
+} Input_t;
 
-/** Retourne true si l'entrée vient de passer de active à inactive. */
-bool input_falling_edge(const input_t *input);
+// Initialisation
+bool input_create(Input_t *input, volatile uint8_t *port, uint8_t mask, bool active_high, uint16_t debounce_rising_ticks, uint16_t debounce_falling_ticks);
 
-#ifdef __cplusplus
-}
+// Enregistrement d'un callback (optionnel)
+void input_set_callback(Input_t *input, InputReceiver receiver, void *context);
+
+// Mise à jour (à appeler périodiquement)
+InputEvent_t input_update(Input_t *input, uint16_t ticks);
+
+// Activation/désactivation
+void input_enable(Input_t *input, bool enable);
+
+// Lectures
+bool input_is_physically_high(const Input_t *input);  // Lecture directe du GPIO (brut)
+bool input_is_active(const Input_t *input);            // État validé (debounce)
+bool input_state_stable(const Input_t *input);  // État validé par le debounce (même que input_is_active)
+
 #endif
-
-#endif /* LIBPIC_INPUT_H */

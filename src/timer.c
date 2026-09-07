@@ -1,89 +1,134 @@
-#include "libpic/timer.h"
+#include "timer.h"
+#include <stddef.h>
 
-void timer_init(timer_t *timer, time_ms_t duration_ms, bool auto_reload)
+bool timer_create(Timer_t *timer)
 {
     if (timer == NULL) {
-        return;
-    }
-
-    timer->duration_ms = duration_ms;
-    timer->start_time_ms = 0;
-    timer->running = false;
-    timer->auto_reload = auto_reload;
-}
-
-void timer_start(timer_t *timer, time_ms_t now_ms)
-{
-    if (timer == NULL) {
-        return;
-    }
-
-    timer->start_time_ms = now_ms;
-    timer->running = true;
-}
-
-void timer_stop(timer_t *timer)
-{
-    if (timer == NULL) {
-        return;
-    }
-
-    timer->running = false;
-}
-
-bool timer_update(timer_t *timer, time_ms_t now_ms)
-{
-    if (timer == NULL || !timer->running) {
         return false;
     }
 
-    if ((time_ms_t)(now_ms - timer->start_time_ms) >= timer->duration_ms) {
-        if (timer->auto_reload && timer->duration_ms > 0) {
-            /* Resynchronize in one step even if several periods have been
-               missed (e.g. timer_update was not called for a while), instead
-               of only advancing by a single period per call. */
-            time_ms_t elapsed_periods = (time_ms_t)(now_ms - timer->start_time_ms) / timer->duration_ms;
-            timer->start_time_ms += elapsed_periods * timer->duration_ms;
-        } else if (!timer->auto_reload) {
-            timer->running = false;
+    *timer = (Timer_t){0};
+
+    return true;
+}
+
+bool timer_init(Timer_t *timer, uint16_t duration, uint16_t cycle)
+{
+    if (timer == NULL || duration == 0) return false;
+    timer_reset(timer);
+    timer->duration = duration;
+    timer->nbr_cycles = cycle;
+
+    return true;
+}
+
+void timer_set_receiver(Timer_t *timer, TimerReceiver receiver, void *context)
+{
+    if (timer == NULL) return;
+
+    timer->receiver = receiver;
+    timer->receiver_context = context;
+}
+
+TimerEvent_t timer_update(Timer_t *timer, uint16_t ticks)
+{
+    if (timer == NULL) return (TimerEvent_t){0};
+
+    TimerEvent_t timer_e = (TimerEvent_t)
+    {
+        .event = false,
+        .iteration = timer->iteration,
+        .iteration_overflow = false,
+        .cycle_over = timer_cycle_over(timer)
+    };
+
+    // On incrémente uniquement si le timer n'est pas en pause et a une durée valide
+    if (timer->paused || timer->duration == 0)
+    {
+        return timer_e;
+    }
+
+    timer->counter += ticks;
+
+    if (timer->counter >= timer->duration) {
+
+        while (timer->counter >= timer->duration) {
+            timer->counter -= timer->duration;
+            timer->iteration++;
+            if (timer->iteration == 0) timer_e.iteration_overflow = true;
+
+            if (timer_cycle_over(timer)) {
+                timer->paused = true;
+                break;
+            }
         }
-        return true;
+
+        timer_e.event = true;
+        timer_e.iteration = timer->iteration;
+        timer_e.cycle_over = timer_cycle_over(timer);
+
+        if (timer->receiver != NULL) {
+            timer->receiver(timer->receiver_context, timer_e);
+        }
+
+        return timer_e;
     }
 
-    return false;
+    return timer_e;
 }
 
-bool timer_is_running(const timer_t *timer)
+bool timer_set_duration(Timer_t *timer, uint16_t duration)
 {
-    if (timer == NULL) {
-        return false;
-    }
+    if (timer == NULL || duration == 0) return false;
 
-    return timer->running;
+    timer->duration = duration;
+    timer->counter = 0;
+
+    return true;
 }
 
-time_ms_t timer_elapsed(const timer_t *timer, time_ms_t now_ms)
+void timer_reset(Timer_t *timer)
 {
-    if (timer == NULL || !timer->running) {
-        return 0;
-    }
-
-    return (time_ms_t)(now_ms - timer->start_time_ms);
+    if (timer == NULL) return;
+    timer->iteration = 0;
+    timer->counter = 0;
+    timer->paused = false;
 }
 
-time_ms_t timer_remaining(const timer_t *timer, time_ms_t now_ms)
+void timer_pause(Timer_t *timer)
 {
-    time_ms_t elapsed;
+    if (timer == NULL) return;
+    timer->paused = true;
+}
 
-    if (timer == NULL || !timer->running) {
-        return 0;
+TimerEvent_t timer_resume(Timer_t *timer)
+{
+    if (timer == NULL) return (TimerEvent_t){0};
+    timer->paused = false;
+
+    if (timer_cycle_over(timer))
+    {
+        timer->iteration = 0;
+        timer->counter = 0;
     }
 
-    elapsed = timer_elapsed(timer, now_ms);
+    TimerEvent_t timer_e = timer_update(timer, 0);
 
-    if (elapsed >= timer->duration_ms) {
-        return 0;
+    if (timer->receiver != NULL && timer_e.event) {
+        timer->receiver(timer->receiver_context, timer_e);
     }
 
-    return (time_ms_t)(timer->duration_ms - elapsed);
+    return timer_e;
+}
+
+bool timer_is_paused(const Timer_t *timer)
+{
+    if (timer == NULL) return true;
+    return timer->paused;
+}
+
+bool timer_cycle_over(const Timer_t *timer)
+{
+    if (timer == NULL) return true;
+    return (timer->nbr_cycles > 0 && timer->iteration >= timer->nbr_cycles);
 }
