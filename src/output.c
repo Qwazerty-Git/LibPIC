@@ -1,6 +1,6 @@
 #include "libpic/output.h"
 
-void output_init(output_t *output, write_pin_fn write, bool active_high)
+void output_init(output_t *output, write_pin_fn write,uint16_t id_pin, bool active_high, bool initial_state)
 {
     if (output == NULL) {
         return;
@@ -8,9 +8,9 @@ void output_init(output_t *output, write_pin_fn write, bool active_high)
 
     output->write = write;
     output->active_high = active_high;
-    output->state = false;
+    output->pin_id = id_pin;
 
-    output_set(output, false);
+    output_set(output, initial_state);
 }
 
 void output_set(output_t *output, bool active)

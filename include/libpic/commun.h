@@ -23,10 +23,10 @@ typedef enum {
 } state_t;
 
 /** Fonction de lecture d'une broche physique (à fournir par le projet appelant). */
-typedef state_t (*read_pin_fn)(void);
+typedef state_t (*read_pin_fn)(uint16_t pin_id);
 
 /** Fonction d'écriture d'une broche physique (à fournir par le projet appelant). */
-typedef void (*write_pin_fn)(state_t state);
+typedef void (*write_pin_fn)(uint16_t pin_id, state_t state);
 
 #ifdef __cplusplus
 }

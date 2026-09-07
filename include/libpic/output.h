@@ -16,6 +16,7 @@ typedef struct {
     write_pin_fn write;  /**< Fonction d'écriture de la broche physique. */
     bool active_high;    /**< true si l'état actif correspond à STATE_HIGH. */
     bool state;          /**< État logique courant (true = actif). */
+    uint16_t pin_id;      /**< Identifiant de la broche physique. */
 } output_t;
 
 /**
@@ -23,9 +24,11 @@ typedef struct {
  *
  * @param output      Sortie à initialiser.
  * @param write       Fonction d'écriture de la broche physique.
+ * @param id_pin      Identifiant de la broche physique.
  * @param active_high true si la sortie est active à l'état haut.
+ * @param initial_state État initial de la sortie (true = actif).
  */
-void output_init(output_t *output, write_pin_fn write, bool active_high);
+void output_init(output_t *output, write_pin_fn write,uint16_t id_pin, bool active_high, bool initial_state);
 
 /** Positionne l'état logique de la sortie (true = actif). */
 void output_set(output_t *output, bool active);

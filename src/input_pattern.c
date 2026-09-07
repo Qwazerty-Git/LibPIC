@@ -1,52 +1,219 @@
 #include "libpic/input_pattern.h"
+#include <stddef.h>
 
-void input_pattern_init(input_pattern_t *pattern, input_t *input,
-                         time_ms_t long_press_threshold_ms, time_ms_t double_press_window_ms)
+bool pattern_matcher_init(MatcherPatternGlobal_t *matcher,
+                        input_t *input,
+                        const MatcherPatternList_t *pattern_list,
+                        MatcherPatternState_t *states,
+                        bool paused)
 {
-    if (pattern == NULL) {
-        return;
+    if (matcher == NULL ||
+        input == NULL ||
+        pattern_list == NULL ||
+        pattern_list->patterns == NULL ||
+        states == NULL) {
+        return false;
     }
 
-    pattern->input = input;
-    pattern->long_press_threshold_ms = long_press_threshold_ms;
-    pattern->double_press_window_ms = double_press_window_ms;
-    pattern->press_start_time = 0;
-    pattern->last_release_time = 0;
-    pattern->pressed = false;
-    pattern->awaiting_second_press = false;
+    matcher->input = input;
+    matcher->list = pattern_list;
+    matcher->states = states;
+    matcher->paused = paused;
+
+    bool any_error = false;
+
+    if (states != NULL && pattern_list != NULL) 
+    {
+        for (uint8_t i = 0; i < pattern_list->count; i++) 
+        {
+            const MatcherPattern_t *pattern = &matcher->list->patterns[i];
+            
+            states[i].step_index = 0;
+            states[i].step_start_ms = 0;
+            states[i].state = PS_ACTIVE;
+            states[i].error_config = false;
+
+            if (pattern->length == 0 || pattern->steps == NULL) {
+                states[i].state = PS_INACTIVE;
+                states[i].error_config = true;
+                any_error = true;
+                continue;
+            }
+
+            for (uint8_t j = 0; j < pattern->length; j++) {
+                if (pattern->steps[j].max_ms != PATTERN_UNLIMITED_MS &&
+                    pattern->steps[j].max_ms < pattern->steps[j].min_ms) {
+                    states[i].state = PS_INACTIVE;
+                    states[i].error_config = true;
+                    any_error = true;
+                    break;
+                }
+            }     
+
+        }
+    }
+    return !any_error;
 }
 
-input_pattern_result_t input_pattern_update(input_pattern_t *pattern, time_ms_t now_ms)
+void pattern_matcher_reset(MatcherPatternGlobal_t *matcher)
 {
-    input_pattern_result_t result = INPUT_PATTERN_NONE;
-    time_ms_t press_duration;
+    if (matcher == NULL || matcher->states == NULL || matcher->list == NULL) return;
 
-    if (pattern == NULL || pattern->input == NULL) {
-        return INPUT_PATTERN_NONE;
+    for (uint8_t i = 0; i < matcher->list->count; i++) {
+        matcher->states[i].step_index = 0;
+        matcher->states[i].step_start_ms = 0;
+        if (!matcher->states[i].error_config) matcher->states[i].state = PS_ACTIVE;
+        //matcher->states[i].error_config = false; // On conserve les erreurs de configuration précédentes
+    }
+}
+
+void pattern_matcher_pause(MatcherPatternGlobal_t *matcher)
+{
+    if (matcher == NULL) return;
+    matcher->paused = true;
+}
+
+void pattern_matcher_resume(MatcherPatternGlobal_t *matcher)
+{
+    if (matcher == NULL) return;
+    matcher->paused = false;
+}
+
+bool pattern_matcher_all_inactive(const MatcherPatternGlobal_t *matcher)
+{
+    if (matcher == NULL || matcher->states == NULL || matcher->list == NULL) return true;
+
+    for (uint8_t i = 0; i < matcher->list->count; i++) {
+        if (matcher->states[i].state != PS_INACTIVE) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool pattern_matcher_is_matched(const MatcherPatternGlobal_t *matcher, uint8_t id)
+{
+    if (matcher == NULL || matcher->states == NULL || matcher->list == NULL) return false;
+
+    for (uint8_t i = 0; i < matcher->list->count; i++) {
+        if (matcher->list->patterns[i].id == id) {
+            return matcher->states[i].state & PATTERN_IS_MATCH_MASK;
+        }
+    }
+    return false;
+}
+
+MatcherPatternResult_t pattern_matcher_update(MatcherPatternGlobal_t *matcher, time_ms_t now_ms)
+{
+    MatcherPatternResult_t result = {false};
+
+    if (matcher == NULL || matcher->states == NULL || matcher->list == NULL || !matcher->input) {
+        return result;
     }
 
-    if (input_rising_edge(pattern->input)) {
-        pattern->pressed = true;
-        pattern->press_start_time = now_ms;
-    } else if (input_falling_edge(pattern->input)) {
-        pattern->pressed = false;
-        press_duration = (time_ms_t)(now_ms - pattern->press_start_time);
+    // Si en pause, on ne traite pas
+    if (matcher->paused) {
+        return result;
+    }
 
-        if (press_duration >= pattern->long_press_threshold_ms) {
-            pattern->awaiting_second_press = false;
-            result = INPUT_PATTERN_LONG_PRESS;
-        } else if (pattern->awaiting_second_press &&
-                   (time_ms_t)(now_ms - pattern->last_release_time) <= pattern->double_press_window_ms) {
-            pattern->awaiting_second_press = false;
-            result = INPUT_PATTERN_DOUBLE_PRESS;
-        } else {
-            pattern->awaiting_second_press = true;
-            pattern->last_release_time = now_ms;
+    // On déclenche l'update de l'input affilié
+    input_event_t event = input_update(matcher->input, now_ms);
+
+    bool all_inactive = true;
+
+    // Traiter chaque pattern
+    for (uint8_t i = 0; i < matcher->list->count; i++) {
+
+        MatcherPatternState_t *state = &matcher->states[i];
+        const MatcherPattern_t *pattern = &matcher->list->patterns[i];
+
+        // On s'assure que les patterns en erreur de configuration sont ignorés
+        if (state->error_config) {
+            state->state = PS_INACTIVE;
+            continue;
         }
-    } else if (!pattern->pressed && pattern->awaiting_second_press &&
-               (time_ms_t)(now_ms - pattern->last_release_time) > pattern->double_press_window_ms) {
-        pattern->awaiting_second_press = false;
-        result = INPUT_PATTERN_SHORT_PRESS;
+
+        // On bascule les just_matched de l'update précédent en matched
+        if (state->state == PS_JUST_MATCHED) {
+            state->state = PS_MATCHED;
+        }    
+        
+        // Ignorer les patterns déjà invalidés ou déjà validés
+        if (state->state == PS_INACTIVE || state->state == PS_MATCHED) continue;
+
+        // Déterminer l'état attendu pour l'étape actuelle
+        // pair (0, 2, 4) = appui (1), impair (1, 3, 5) = relâchement (0)
+        bool expected_event = (state->step_index & 1)? event.falling_edge : event.rising_edge;
+        bool has_event = event.rising_edge || event.falling_edge;
+        bool event_is_unreliable = has_event && !event.reliable;
+        
+        // Initialiser step_start_ms si on est au tout début et qu'un appui vient de se produire
+        if (state->step_index == 0) 
+        {
+            if (event.rising_edge && !event.reliable) {
+                state->state = PS_INACTIVE;
+                continue;
+            }
+
+            if (!event.rising_edge) {
+                continue;
+            }
+
+            state->step_start_ms = now_ms;
+            state->state = PS_PENDING;
+            all_inactive = false;
+            continue;
+        } 
+        else if ((!expected_event && has_event) || event_is_unreliable) 
+        {
+            state->state = PS_INACTIVE;
+            continue;
+        }
+
+        // On calcule le temps écoulé depuis le début de l'étape actuelle
+        time_ms_t elapsed_ms = (time_ms_t)(now_ms - state->step_start_ms);
+
+        const PatternStep_t *step =&pattern->steps[state->step_index];
+
+        if (step->max_ms != PATTERN_UNLIMITED_MS && elapsed_ms > step->max_ms) {
+            state->state = PS_INACTIVE;
+        }
+        else if (has_event) {
+            if (elapsed_ms < step->min_ms) {
+                state->state = PS_INACTIVE;
+            }
+            else {
+                state->step_index++;
+
+                if (state->step_index >= pattern->length) {
+                    state->state = PS_JUST_MATCHED;
+                    result.any_matched = true;
+                } else {
+                    state->step_start_ms = now_ms;
+                    state->state = PS_PENDING;
+                }
+            }
+        } 
+        else if (elapsed_ms >= step->min_ms && step->max_ms == PATTERN_UNLIMITED_MS) { //step->min_ms != 0 &&
+            state->step_index++;
+
+            if (state->step_index >= pattern->length) {
+                state->state = PS_JUST_MATCHED;
+                result.any_matched = true;
+            } else {
+                state->step_start_ms = now_ms;
+                state->state = PS_PENDING;
+            }
+        }
+
+        if (state->state != PS_INACTIVE) {
+            all_inactive = false;
+        }
+    }
+
+    // Auto-reset si tous les patterns sont invalides
+    if (all_inactive) {
+        pattern_matcher_reset(matcher);
     }
 
     return result;
