@@ -119,8 +119,6 @@ MatcherPatternResult_t pattern_matcher_update(MatcherPatternGlobal_t *matcher, t
     // On déclenche l'update de l'input affilié
     input_event_t event = input_update(matcher->input, now_ms);
 
-    bool all_inactive = true;
-
     // Traiter chaque pattern
     for (uint8_t i = 0; i < matcher->list->count; i++) {
 
@@ -143,7 +141,7 @@ MatcherPatternResult_t pattern_matcher_update(MatcherPatternGlobal_t *matcher, t
 
         // Déterminer l'état attendu pour l'étape actuelle
         // pair (0, 2, 4) = appui (1), impair (1, 3, 5) = relâchement (0)
-        bool expected_event = (state->step_index & 1)? event.falling_edge : event.rising_edge;
+        bool expected_event = (state->step_index & 1u)? event.rising_edge : event.falling_edge;
         bool has_event = event.rising_edge || event.falling_edge;
         bool event_is_unreliable = has_event && !event.reliable;
         
@@ -161,7 +159,7 @@ MatcherPatternResult_t pattern_matcher_update(MatcherPatternGlobal_t *matcher, t
 
             state->step_start_ms = now_ms;
             state->state = PS_PENDING;
-            all_inactive = false;
+            result.all_inactive = false;
             continue;
         } 
         else if ((!expected_event && has_event) || event_is_unreliable) 
@@ -174,7 +172,9 @@ MatcherPatternResult_t pattern_matcher_update(MatcherPatternGlobal_t *matcher, t
         time_ms_t elapsed_ms = (time_ms_t)(now_ms - state->step_start_ms);
 
         const PatternStep_t *step =&pattern->steps[state->step_index];
-
+        bool is_last_step = state->step_index == (uint8_t)(pattern->length - 1);
+        bool can_match_by_time = is_last_step && step->max_ms == PATTERN_UNLIMITED_MS && elapsed_ms >= step->min_ms;
+        
         if (step->max_ms != PATTERN_UNLIMITED_MS && elapsed_ms > step->max_ms) {
             state->state = PS_INACTIVE;
         }
@@ -194,27 +194,16 @@ MatcherPatternResult_t pattern_matcher_update(MatcherPatternGlobal_t *matcher, t
                 }
             }
         } 
-        else if (elapsed_ms >= step->min_ms && step->max_ms == PATTERN_UNLIMITED_MS) { //step->min_ms != 0 &&
-            state->step_index++;
-
-            if (state->step_index >= pattern->length) {
-                state->state = PS_JUST_MATCHED;
-                result.any_matched = true;
-            } else {
-                state->step_start_ms = now_ms;
-                state->state = PS_PENDING;
-            }
+        else if (can_match_by_time) {
+            state->state = PS_JUST_MATCHED;
+            result.any_matched = true;
         }
 
         if (state->state != PS_INACTIVE) {
-            all_inactive = false;
+            result.all_inactive = false;
         }
     }
 
-    // Auto-reset si tous les patterns sont invalides
-    if (all_inactive) {
-        pattern_matcher_reset(matcher);
-    }
 
     return result;
 }

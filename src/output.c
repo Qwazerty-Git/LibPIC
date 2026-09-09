@@ -25,7 +25,7 @@ void output_set(output_t *output, bool active)
 
     if (output->write != NULL) {
         pin_state = (active == output->active_high) ? STATE_HIGH : STATE_LOW;
-        output->write(pin_state);
+        output->write(output->pin_id, pin_state);
     }
 }
 

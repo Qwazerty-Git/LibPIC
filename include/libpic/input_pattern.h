@@ -34,8 +34,14 @@
  *
  * Lorsqu'un événement logique survient :
  *
- *   - rising_edge est attendu pour une étape d'appui ;
- *   - falling_edge est attendu pour une étape de relâchement.
+ * Chaque étape décrit l'état logique maintenu pendant sa durée :
+ *
+ *   - étape paire  : l'entrée doit être active ;
+ *   - étape impaire : l'entrée doit être inactive.
+ *
+ * Une étape d'appui est démarrée par un rising_edge et terminée par un
+ * falling_edge. Une étape de relâchement est démarrée par un falling_edge
+ * et terminée par un rising_edge.
  *
  * Un événement inattendu ou non fiable invalide le pattern courant, mais ne
  * constitue pas une erreur de configuration.
@@ -58,17 +64,40 @@
  * lorsqu'une définition de pattern est invalide. Dans ce cas, l'état du
  * pattern est toujours PS_INACTIVE.
  *
- *   Note : Lorsqu'une étape illimitée atteint sa durée minimale, elle est franchie
- *          automatiquement. Cette règle permet notamment de reconnaître un appui long
- *          sans attendre le relâchement.
- *      Exemple de pattern concerné :
- *          static const PatternStep_t long_first_click_steps[] = { 
- *              { 2000, 0 }, //reconnaître un appui long sans attendre le relâchement
- *              { 0, 300 } 
- *          };
- *      -> Résultat : Un appui de plus de 2s passera immédiatement l'étape, même si le relâchement n'a pas encore eu lieu.
- *                    L'étape suivante ne sera jamais validée et l'état de ce pattern passera à PS_INACTIVE.
- *                    Pour être validé, l'utilisateur devra relacher avant 2s
+ * Une étape dont max_ms vaut PATTERN_UNLIMITED_MS ne possède aucune durée
+ * maximale. Elle reste active jusqu'à l'événement attendu, même lorsque
+ * min_ms est atteint.
+ *
+ * Exception : si cette étape est la dernière du pattern et que min_ms est
+ * strictement supérieur à zéro, le pattern peut être reconnu dès que
+ * min_ms est atteint, sans attendre le changement d'état suivant. Cette
+ * règle permet de reconnaître un appui long.
+ *
+ * Exemple :
+ *
+ *   static const PatternStep_t long_press_steps[] = {
+ *       { 2000, PATTERN_UNLIMITED_MS }
+ *   };
+ *
+ * Le pattern est reconnu au premier update observé à partir de 2000 ms
+ * d'appui. Le relâchement n'est pas nécessaire pour produire la
+ * reconnaissance.
+ *
+ * Pour une étape illimitée non finale, min_ms ne provoque pas le passage
+ * automatique à l'étape suivante. L'étape suivante ne commence qu'après
+ * l'événement attendu.
+ *
+ * Exemple d'appui long suivi d'un relâchement :
+ *
+ *   static const PatternStep_t long_then_release_steps[] = {
+ *       { 2000, PATTERN_UNLIMITED_MS },
+ *       { 0, 300 }
+ *   };
+ *
+ * L'appui doit durer au moins 2000 ms. Le falling_edge termine alors
+ * l'étape d'appui et démarre l'étape de relâchement. Le relâchement doit
+ * ensuite être observé dans un délai maximal de 300 ms, selon la définition
+ * de l'étape suivante.
  *
  * Exemple : clic court, appui long et double-clic logique.
  *
@@ -82,9 +111,9 @@
  *   };
  *
  *   static const PatternStep_t double_click_steps[] = {
- *       { 0, 300 },  // premier appui
- *       { 0, 300 },  // relâchement entre les deux clics
- *       { 0, 0 }     // second appui, durée non limitée
+ *       { 0, 300 }, // appui 1, terminé au falling_edge
+ *       { 0, 300 }, // relâchement, terminé au rising_edge
+ *       { 0, 0 }    // appui 2, validé au rising_edge
  *   };
  *
  *   static const MatcherPattern_t patterns[] = {
@@ -178,7 +207,8 @@ typedef struct {
 
 // Résultat retourné par pattern_matcher_update
 typedef struct {
-    bool any_matched;        // true si au moins un pattern a été validé
+    bool any_matched;           // true si au moins un pattern a été validé
+    bool all_inactive;          // true si tous les pattern sont inactif
 } MatcherPatternResult_t;
 
 // Structure principale du matcher
