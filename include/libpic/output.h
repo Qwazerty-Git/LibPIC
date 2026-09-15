@@ -33,6 +33,9 @@ void output_init(output_t *output, write_pin_fn write,uint16_t id_pin, bool acti
 /** Positionne l'état logique de la sortie (true = actif). */
 void output_set(output_t *output, bool active);
 
+void output_off(output_t *output);
+void output_on(output_t *output);
+
 /** Inverse l'état logique de la sortie. */
 void output_toggle(output_t *output);
 

@@ -2,9 +2,7 @@
 
 void output_init(output_t *output, write_pin_fn write,uint16_t id_pin, bool active_high, bool initial_state)
 {
-    if (output == NULL) {
-        return;
-    }
+    if (output == NULL) return;
 
     output->write = write;
     output->active_high = active_high;
@@ -17,10 +15,8 @@ void output_set(output_t *output, bool active)
 {
     state_t pin_state;
 
-    if (output == NULL) {
-        return;
-    }
-
+    if (output == NULL) return;
+    
     output->state = active;
 
     if (output->write != NULL) {
@@ -29,20 +25,26 @@ void output_set(output_t *output, bool active)
     }
 }
 
+void output_off(output_t *output)
+{
+    if (output == NULL) return;
+    output_set(output, false);
+}
+
+void output_on(output_t *output)
+{
+    if (output == NULL) return;
+    output_set(output, true);
+}
+
 void output_toggle(output_t *output)
 {
-    if (output == NULL) {
-        return;
-    }
-
+    if (output == NULL) return;
     output_set(output, !output->state);
 }
 
 bool output_is_active(const output_t *output)
 {
-    if (output == NULL) {
-        return false;
-    }
-
+    if (output == NULL) return false;
     return output->state;
 }

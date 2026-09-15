@@ -1,4 +1,4 @@
-#include "libpic/input.h"
+#include "../include/libpic/input.h"
 
 void input_init(input_t *input, read_pin_fn read, uint16_t pin_id, bool active_high, time_ms_t debounce_delay_ms)
 {

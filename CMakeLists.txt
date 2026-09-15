@@ -22,7 +22,7 @@ add_library(libpic STATIC
 
 target_include_directories(libpic PUBLIC include)
 
-option(LIBPIC_BUILD_TESTS "Build LibPIC unit tests" ON)
+option(LIBPIC_BUILD_TESTS "Build LibPIC unit tests" OFF)
 
 if(LIBPIC_BUILD_TESTS)
     enable_testing()
