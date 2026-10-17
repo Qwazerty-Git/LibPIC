@@ -1,10 +1,17 @@
 #include "libpic/input_pattern.h"
 #include <stddef.h>
 
+<<<<<<< HEAD
 bool input_pattern_matcher_init(MatcherInputPattern_t *matcher,
                         input_t *input,
                         const MatcherInputPatternList_t *pattern_list,
                         MatcherInputPatternState_t *states,
+=======
+bool pattern_matcher_init(MatcherPatternGlobal_t *matcher,
+                        input_t *input,
+                        const MatcherPatternList_t *pattern_list,
+                        MatcherPatternState_t *states,
+>>>>>>> 1cf8798933a35e7220dfd920e2ac4fbe02f0a1a1
                         bool paused)
 {
     if (matcher == NULL ||
@@ -26,6 +33,7 @@ bool input_pattern_matcher_init(MatcherInputPattern_t *matcher,
     {
         for (uint8_t i = 0; i < pattern_list->count; i++) 
         {
+<<<<<<< HEAD
             const MatcherInputPatternSequence_t *pattern = &matcher->list->patterns[i];
             
             states[i].step_index = 0;
@@ -35,6 +43,17 @@ bool input_pattern_matcher_init(MatcherInputPattern_t *matcher,
 
             if (pattern->length == 0 || pattern->steps == NULL) {
                 states[i].state = IPS_INACTIVE;
+=======
+            const MatcherPattern_t *pattern = &matcher->list->patterns[i];
+            
+            states[i].step_index = 0;
+            states[i].step_start_ms = 0;
+            states[i].state = PS_ACTIVE;
+            states[i].error_config = false;
+
+            if (pattern->length == 0 || pattern->steps == NULL) {
+                states[i].state = PS_INACTIVE;
+>>>>>>> 1cf8798933a35e7220dfd920e2ac4fbe02f0a1a1
                 states[i].error_config = true;
                 any_error = true;
                 continue;
@@ -43,7 +62,11 @@ bool input_pattern_matcher_init(MatcherInputPattern_t *matcher,
             for (uint8_t j = 0; j < pattern->length; j++) {
                 if (pattern->steps[j].max_ms != PATTERN_UNLIMITED_MS &&
                     pattern->steps[j].max_ms < pattern->steps[j].min_ms) {
+<<<<<<< HEAD
                     states[i].state = IPS_INACTIVE;
+=======
+                    states[i].state = PS_INACTIVE;
+>>>>>>> 1cf8798933a35e7220dfd920e2ac4fbe02f0a1a1
                     states[i].error_config = true;
                     any_error = true;
                     break;
@@ -55,43 +78,71 @@ bool input_pattern_matcher_init(MatcherInputPattern_t *matcher,
     return !any_error;
 }
 
+<<<<<<< HEAD
 void input_pattern_matcher_reset(MatcherInputPattern_t *matcher)
+=======
+void pattern_matcher_reset(MatcherPatternGlobal_t *matcher)
+>>>>>>> 1cf8798933a35e7220dfd920e2ac4fbe02f0a1a1
 {
     if (matcher == NULL || matcher->states == NULL || matcher->list == NULL) return;
 
     for (uint8_t i = 0; i < matcher->list->count; i++) {
         matcher->states[i].step_index = 0;
         matcher->states[i].step_start_ms = 0;
+<<<<<<< HEAD
         if (!matcher->states[i].error_config) matcher->states[i].state = IPS_ACTIVE;
+=======
+        if (!matcher->states[i].error_config) matcher->states[i].state = PS_ACTIVE;
+>>>>>>> 1cf8798933a35e7220dfd920e2ac4fbe02f0a1a1
         //matcher->states[i].error_config = false; // On conserve les erreurs de configuration précédentes
     }
 }
 
+<<<<<<< HEAD
 void input_pattern_matcher_pause(MatcherInputPattern_t *matcher)
+=======
+void pattern_matcher_pause(MatcherPatternGlobal_t *matcher)
+>>>>>>> 1cf8798933a35e7220dfd920e2ac4fbe02f0a1a1
 {
     if (matcher == NULL) return;
     matcher->paused = true;
 }
 
+<<<<<<< HEAD
 void input_pattern_matcher_resume(MatcherInputPattern_t *matcher)
+=======
+void pattern_matcher_resume(MatcherPatternGlobal_t *matcher)
+>>>>>>> 1cf8798933a35e7220dfd920e2ac4fbe02f0a1a1
 {
     if (matcher == NULL) return;
     matcher->paused = false;
 }
 
+<<<<<<< HEAD
 bool input_pattern_matcher_all_inactive(const MatcherInputPattern_t *matcher)
+=======
+bool pattern_matcher_all_inactive(const MatcherPatternGlobal_t *matcher)
+>>>>>>> 1cf8798933a35e7220dfd920e2ac4fbe02f0a1a1
 {
     if (matcher == NULL || matcher->states == NULL || matcher->list == NULL) return true;
 
     for (uint8_t i = 0; i < matcher->list->count; i++) {
+<<<<<<< HEAD
         if (matcher->states[i].state != IPS_INACTIVE) {
+=======
+        if (matcher->states[i].state != PS_INACTIVE) {
+>>>>>>> 1cf8798933a35e7220dfd920e2ac4fbe02f0a1a1
             return false;
         }
     }
     return true;
 }
 
+<<<<<<< HEAD
 bool input_pattern_matcher_is_matched(const MatcherInputPattern_t *matcher, uint8_t id)
+=======
+bool pattern_matcher_is_matched(const MatcherPatternGlobal_t *matcher, uint8_t id)
+>>>>>>> 1cf8798933a35e7220dfd920e2ac4fbe02f0a1a1
 {
     if (matcher == NULL || matcher->states == NULL || matcher->list == NULL) return false;
 
@@ -103,9 +154,15 @@ bool input_pattern_matcher_is_matched(const MatcherInputPattern_t *matcher, uint
     return false;
 }
 
+<<<<<<< HEAD
 MatcherInputPatternResult_t input_pattern_matcher_update(MatcherInputPattern_t *matcher, time_ms_t now_ms)
 {
     MatcherInputPatternResult_t result = {false};
+=======
+MatcherPatternResult_t pattern_matcher_update(MatcherPatternGlobal_t *matcher, time_ms_t now_ms)
+{
+    MatcherPatternResult_t result = {false};
+>>>>>>> 1cf8798933a35e7220dfd920e2ac4fbe02f0a1a1
 
     if (matcher == NULL || matcher->states == NULL || matcher->list == NULL || !matcher->input) {
         return result;
@@ -122,22 +179,40 @@ MatcherInputPatternResult_t input_pattern_matcher_update(MatcherInputPattern_t *
     // Traiter chaque pattern
     for (uint8_t i = 0; i < matcher->list->count; i++) {
 
+<<<<<<< HEAD
         MatcherInputPatternState_t *state = &matcher->states[i];
         const MatcherInputPatternSequence_t *pattern = &matcher->list->patterns[i];
 
         // On s'assure que les patterns en erreur de configuration sont ignorés
         if (state->error_config) {
             state->state = IPS_INACTIVE;
+=======
+        MatcherPatternState_t *state = &matcher->states[i];
+        const MatcherPattern_t *pattern = &matcher->list->patterns[i];
+
+        // On s'assure que les patterns en erreur de configuration sont ignorés
+        if (state->error_config) {
+            state->state = PS_INACTIVE;
+>>>>>>> 1cf8798933a35e7220dfd920e2ac4fbe02f0a1a1
             continue;
         }
 
         // On bascule les just_matched de l'update précédent en matched
+<<<<<<< HEAD
         if (state->state == IPS_JUST_MATCHED) {
             state->state = IPS_MATCHED;
         }    
         
         // Ignorer les patterns déjà invalidés ou déjà validés
         if (state->state == IPS_INACTIVE || state->state == IPS_MATCHED) continue;
+=======
+        if (state->state == PS_JUST_MATCHED) {
+            state->state = PS_MATCHED;
+        }    
+        
+        // Ignorer les patterns déjà invalidés ou déjà validés
+        if (state->state == PS_INACTIVE || state->state == PS_MATCHED) continue;
+>>>>>>> 1cf8798933a35e7220dfd920e2ac4fbe02f0a1a1
 
         // Déterminer l'état attendu pour l'étape actuelle
         // pair (0, 2, 4) = appui (1), impair (1, 3, 5) = relâchement (0)
@@ -149,7 +224,11 @@ MatcherInputPatternResult_t input_pattern_matcher_update(MatcherInputPattern_t *
         if (state->step_index == 0) 
         {
             if (event.rising_edge && !event.reliable) {
+<<<<<<< HEAD
                 state->state = IPS_INACTIVE;
+=======
+                state->state = PS_INACTIVE;
+>>>>>>> 1cf8798933a35e7220dfd920e2ac4fbe02f0a1a1
                 continue;
             }
 
@@ -158,48 +237,84 @@ MatcherInputPatternResult_t input_pattern_matcher_update(MatcherInputPattern_t *
             }
 
             state->step_start_ms = now_ms;
+<<<<<<< HEAD
             state->state = IPS_PENDING;
+=======
+            state->state = PS_PENDING;
+>>>>>>> 1cf8798933a35e7220dfd920e2ac4fbe02f0a1a1
             result.all_inactive = false;
             continue;
         } 
         else if ((!expected_event && has_event) || event_is_unreliable) 
         {
+<<<<<<< HEAD
             state->state = IPS_INACTIVE;
+=======
+            state->state = PS_INACTIVE;
+>>>>>>> 1cf8798933a35e7220dfd920e2ac4fbe02f0a1a1
             continue;
         }
 
         // On calcule le temps écoulé depuis le début de l'étape actuelle
         time_ms_t elapsed_ms = (time_ms_t)(now_ms - state->step_start_ms);
 
+<<<<<<< HEAD
         const InputPatternStep_t *step =&pattern->steps[state->step_index];
+=======
+        const PatternStep_t *step =&pattern->steps[state->step_index];
+>>>>>>> 1cf8798933a35e7220dfd920e2ac4fbe02f0a1a1
         bool is_last_step = state->step_index == (uint8_t)(pattern->length - 1);
         bool can_match_by_time = is_last_step && step->max_ms == PATTERN_UNLIMITED_MS && elapsed_ms >= step->min_ms;
         
         if (step->max_ms != PATTERN_UNLIMITED_MS && elapsed_ms > step->max_ms) {
+<<<<<<< HEAD
             state->state = IPS_INACTIVE;
         }
         else if (has_event) {
             if (elapsed_ms < step->min_ms) {
                 state->state = IPS_INACTIVE;
+=======
+            state->state = PS_INACTIVE;
+        }
+        else if (has_event) {
+            if (elapsed_ms < step->min_ms) {
+                state->state = PS_INACTIVE;
+>>>>>>> 1cf8798933a35e7220dfd920e2ac4fbe02f0a1a1
             }
             else {
                 state->step_index++;
 
                 if (state->step_index >= pattern->length) {
+<<<<<<< HEAD
                     state->state = IPS_JUST_MATCHED;
                     result.any_matched = true;
                 } else {
                     state->step_start_ms = now_ms;
                     state->state = IPS_PENDING;
+=======
+                    state->state = PS_JUST_MATCHED;
+                    result.any_matched = true;
+                } else {
+                    state->step_start_ms = now_ms;
+                    state->state = PS_PENDING;
+>>>>>>> 1cf8798933a35e7220dfd920e2ac4fbe02f0a1a1
                 }
             }
         } 
         else if (can_match_by_time) {
+<<<<<<< HEAD
             state->state = IPS_JUST_MATCHED;
             result.any_matched = true;
         }
 
         if (state->state != IPS_INACTIVE) {
+=======
+            state->state = PS_JUST_MATCHED;
+            result.any_matched = true;
+        }
+
+        if (state->state != PS_INACTIVE) {
+>>>>>>> 1cf8798933a35e7220dfd920e2ac4fbe02f0a1a1
             result.all_inactive = false;
         }
     }

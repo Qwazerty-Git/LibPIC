@@ -171,6 +171,7 @@ extern "C" {
 // } PatternStep_t;
 
 typedef enum {
+<<<<<<< HEAD
     IPS_ACTIVE = 0x00u,
     IPS_PENDING = 0x01u,
     IPS_INACTIVE = 0x02u,
@@ -178,10 +179,20 @@ typedef enum {
     IPS_MATCHED = 0x81u,      //bit7 à 1
     //iPS_ERROR = 0x7F //On conserve le bit7 pour indiquer les etats matched/just_matched
 } enum_InputPatternState;
+=======
+    PS_ACTIVE = 0x00u,
+    PS_PENDING = 0x01u,
+    PS_INACTIVE = 0x02u,
+    PS_JUST_MATCHED = 0x80u, //bit7 à 1
+    PS_MATCHED = 0x81u,      //bit7 à 1
+    //PS_ERROR = 0x7F //On conserve le bit7 pour indiquer les etats matched/just_matched
+} enum_PatternState;
+>>>>>>> 1cf8798933a35e7220dfd920e2ac4fbe02f0a1a1
 
 typedef struct {
     uint16_t min_ms;   // Durée minimale de l'étape (en ms)
     uint16_t max_ms;   // Durée maximale de l'étape (en ms)
+<<<<<<< HEAD
 } InputPatternStep_t;
 
 // Un pattern = une séquence d'étapes
@@ -196,18 +207,41 @@ typedef struct {
     const MatcherInputPatternSequence_t *patterns;    // Tableau de patterns (en Flash)
     uint8_t count;                       // Nombre de patterns
 } MatcherInputPatternList_t;
+=======
+} PatternStep_t;
+
+// Un pattern = une séquence d'étapes
+typedef struct {
+    const PatternStep_t *steps;   // Tableau des étapes (en Flash)
+    uint8_t length;               // Nombre d'étapes
+    uint8_t id;                   // Identifiant pour l'utilisateur
+} MatcherPattern_t;
+
+// Liste de patterns
+typedef struct {
+    const MatcherPattern_t *patterns;    // Tableau de patterns (en Flash)
+    uint8_t count;                       // Nombre de patterns
+} MatcherPatternList_t;
+>>>>>>> 1cf8798933a35e7220dfd920e2ac4fbe02f0a1a1
 
 // État interne d'un pattern (en RAM)
 typedef struct {
     uint8_t step_index;         // Étape actuelle (0 = première)
     time_ms_t step_start_ms;    // Temps de début de l'étape actuelle
+<<<<<<< HEAD
     enum_InputPatternState state;    // État actuel du pattern
     bool error_config;                 // true si le pattern est en erreur
 } MatcherInputPatternState_t;
+=======
+    enum_PatternState state;    // État actuel du pattern
+    bool error_config;                 // true si le pattern est en erreur
+} MatcherPatternState_t;
+>>>>>>> 1cf8798933a35e7220dfd920e2ac4fbe02f0a1a1
 
 // Résultat retourné par pattern_matcher_update
 typedef struct {
     bool any_matched;           // true si au moins un pattern a été validé
+<<<<<<< HEAD
     //bool any_windowed;          // true si au moins un pattern est en cours de correspondance (windowed)
     bool all_inactive;          // true si tous les pattern sont inactifs
 } MatcherInputPatternResult_t;
@@ -226,12 +260,32 @@ bool input_pattern_matcher_init(MatcherInputPattern_t *matcher,
                         input_t *input,               
                         const MatcherInputPatternList_t *pattern_list,
                         MatcherInputPatternState_t *states,
+=======
+    bool all_inactive;          // true si tous les pattern sont inactif
+} MatcherPatternResult_t;
+
+// Structure principale du matcher
+typedef struct {
+    const MatcherPatternList_t *list;   // Liste des patterns (définition)
+    MatcherPatternState_t *states;      // États des patterns (fourni par l'utilisateur)
+    input_t *input;                     // ← Le matcher connaît SON input
+    bool paused;                        // true = ignore les ticks
+    //time_ms_t last_update_time;         // Dernier temps de mise à jour
+} MatcherPatternGlobal_t;
+
+// Initialisation du matcher
+bool pattern_matcher_init(MatcherPatternGlobal_t *matcher,
+                        input_t *input,               
+                        const MatcherPatternList_t *pattern_list,
+                        MatcherPatternState_t *states,
+>>>>>>> 1cf8798933a35e7220dfd920e2ac4fbe02f0a1a1
                         bool paused);
 
 // Mise à jour : analyse les patterns en fonction de l'état de l'input
 // input : pointeur vers l'input à surveiller
 // now_ms : temps actuel en millisecondes
 // Retourne any_matched = true si au moins un pattern a été validé
+<<<<<<< HEAD
 MatcherInputPatternResult_t input_pattern_matcher_update(MatcherInputPattern_t *matcher, time_ms_t now_ms);
 
 // Reset : réinitialise tous les états (tous les patterns redeviennent actifs)
@@ -246,6 +300,22 @@ bool input_pattern_matcher_all_inactive(const MatcherInputPattern_t *matcher);
 
 // Indique si un pattern spécifique (par ID) a été validé
 bool input_pattern_matcher_is_matched(const MatcherInputPattern_t *matcher, uint8_t id);
+=======
+MatcherPatternResult_t pattern_matcher_update(MatcherPatternGlobal_t *matcher, time_ms_t now_ms);
+
+// Reset : réinitialise tous les états (tous les patterns redeviennent actifs)
+void pattern_matcher_reset(MatcherPatternGlobal_t *matcher);
+
+// Pause / Reprise
+void pattern_matcher_pause(MatcherPatternGlobal_t *matcher);
+void pattern_matcher_resume(MatcherPatternGlobal_t *matcher);
+
+// Indique si tous les patterns sont invalidés
+bool pattern_matcher_all_inactive(const MatcherPatternGlobal_t *matcher);
+
+// Indique si un pattern spécifique (par ID) a été validé
+bool pattern_matcher_is_matched(const MatcherPatternGlobal_t *matcher, uint8_t id);
+>>>>>>> 1cf8798933a35e7220dfd920e2ac4fbe02f0a1a1
 
 #ifdef __cplusplus
 }
