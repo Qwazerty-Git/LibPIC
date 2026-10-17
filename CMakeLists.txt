@@ -1,14 +1,22 @@
-cmake_minimum_required(VERSION 3.10)
-project(LibPIC C)
+cmake_minimum_required(VERSION 3.24)
 
-set(CMAKE_C_STANDARD 99)
-set(CMAKE_C_STANDARD_REQUIRED ON)
+# LibPIC can be used in two ways:
+#   - standalone : its own CMake project (host build + unit tests)
+#   - embedded   : pulled into a firmware project with add_subdirectory()
+# Project-level settings are therefore only applied in the standalone case,
+# so that an embedding project keeps control over its toolchain and flags.
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    project(LibPIC C)
 
-if(NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE Debug)
+    set(CMAKE_C_STANDARD 99)
+    set(CMAKE_C_STANDARD_REQUIRED ON)
+
+    if(NOT CMAKE_BUILD_TYPE)
+        set(CMAKE_BUILD_TYPE Debug)
+    endif()
+
+    add_compile_options(-Wall -Wextra)
 endif()
-
-add_compile_options(-Wall -Wextra)
 
 add_library(libpic STATIC
     src/input.c
@@ -16,13 +24,17 @@ add_library(libpic STATIC
     src/input_pattern.c
     src/output.c
     src/output_group.c
+    src/output_pattern.c
+    src/output_pwm.c
     src/timer.c
     src/trigger.c
 )
 
-target_include_directories(libpic PUBLIC include)
+target_include_directories(libpic PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+)
 
-option(LIBPIC_BUILD_TESTS "Build LibPIC unit tests" ON)
+option(LIBPIC_BUILD_TESTS "Build LibPIC unit tests" OFF)
 
 if(LIBPIC_BUILD_TESTS)
     enable_testing()

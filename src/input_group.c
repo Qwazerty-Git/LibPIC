@@ -3,7 +3,7 @@
 
 void input_group_init(input_group_t *group, input_t **inputs, uint8_t count)
 {
-    if (group == NULL) {
+    if (group == NULL || inputs == NULL || count == 0) {
         return;
     }
 
