@@ -17,6 +17,8 @@ La bibliothèque contient notamment :
   appui) (`include/libpic/input_pattern.h`)
 - **output_t** — gestion des sorties (`include/libpic/output.h`)
 - **output_group_t** — gestion de groupe des sorties (`include/libpic/output_group.h`)
+- **output_pattern** — exécution de séquences d'états sur une sortie (clignotement,
+  temporisation de sorties) (`include/libpic/output_pattern.h`)
 - **timer_t** — gestion de temporisations non bloquantes (`include/libpic/timer.h`)
 - **trigger_t** — gestion de déclenchements et événements (`include/libpic/trigger.h`)
 
