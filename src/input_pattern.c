@@ -5,13 +5,15 @@ bool input_pattern_matcher_init(MatcherInputPattern_t *matcher,
                         input_t *input,
                         const MatcherInputPatternList_t *pattern_list,
                         MatcherInputPatternState_t *states,
+                        uint8_t states_count,
                         bool paused)
 {
     if (matcher == NULL ||
         input == NULL ||
         pattern_list == NULL ||
         pattern_list->patterns == NULL ||
-        states == NULL) {
+        states == NULL ||
+        states_count != pattern_list->count) {
         return false;
     }
 
@@ -91,16 +93,12 @@ bool input_pattern_matcher_all_inactive(const MatcherInputPattern_t *matcher)
     return true;
 }
 
-bool input_pattern_matcher_is_matched(const MatcherInputPattern_t *matcher, uint8_t id)
+bool input_pattern_matcher_is_matched(const MatcherInputPattern_t *matcher, uint8_t index)
 {
-    if (matcher == NULL || matcher->states == NULL || matcher->list == NULL) return false;
+    if (matcher == NULL || matcher->states == NULL || matcher->list == NULL ||
+        index >= matcher->list->count) return false;
 
-    for (uint8_t i = 0; i < matcher->list->count; i++) {
-        if (matcher->list->patterns[i].id == id) {
-            return matcher->states[i].state & PATTERN_IS_MATCH_MASK;
-        }
-    }
-    return false;
+    return matcher->states[index].state & PATTERN_IS_MATCH_MASK;
 }
 
 MatcherInputPatternResult_t input_pattern_matcher_update(MatcherInputPattern_t *matcher, time_ms_t now_ms)

@@ -34,8 +34,16 @@ typedef enum {
     STATE_HIGH = 1
 } state_t;
 
-/** Type utilisé pour représenter un instant ou une durée, en millisecondes. */
-typedef uint32_t time_ms_t;
+/**
+ * Type utilisé pour représenter un instant ou une durée, en millisecondes.
+ *
+ * Sur 16 bits, la plage est de 65 535 ms. Les calculs de durée des modules se
+ * font par soustraction modulaire : ils restent exacts tant que l'intervalle
+ * réel entre deux appels d'un module reste inférieur à 65,5 s. Au-delà, l'écart
+ * est interprété modulo 65 536 et devient faux. Une pause ou un arrêt long
+ * n'est pas concerné : seul compte l'intervalle entre deux mises à jour.
+ */
+typedef uint16_t time_ms_t;
 
 /** Fonction de lecture d'une broche physique (à fournir par le projet appelant). */
 typedef state_t (*read_pin_fn)(uint16_t pin_id);

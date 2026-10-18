@@ -24,9 +24,8 @@ OutputPatternEvent_t output_pattern_update(OutputPattern_t *pattern, time_ms_t n
 {
 	OutputPatternEvent_t event = make_event(pattern);
 
-	if (pattern == NULL || pattern->sequence == NULL || pattern->state_buffer == NULL ||
-		pattern->state_buffer->data == NULL ||
-		pattern->current_step_id >= pattern->state_buffer->length) return event;
+	if (pattern == NULL || pattern->sequence == NULL || pattern->states == NULL ||
+		pattern->current_step_id >= pattern->sequence->length) return event;
 
 	// On regarde l'état d'execution du pattern
 	if (pattern->execution_state == PATTERN_EXEC_ABORDED ||
@@ -34,7 +33,7 @@ OutputPatternEvent_t output_pattern_update(OutputPattern_t *pattern, time_ms_t n
 		pattern->execution_state == PATTERN_EXEC_STOPPED) return event;
 
 	// On pointe le step/state en cours
-	OutputPatternStepState_t *current_state = &pattern->state_buffer->data[pattern->current_step_id];
+	OutputPatternStepState_t *current_state = &pattern->states[pattern->current_step_id];
 	const OutputPatternStep_t *current_step = &pattern->sequence->steps[pattern->current_step_id];
 
 	time_ms_t elapsed_ms = (time_ms_t)(now_ms - current_state->step_start_ms);
@@ -52,7 +51,7 @@ OutputPatternEvent_t output_pattern_update(OutputPattern_t *pattern, time_ms_t n
 
 	// Durée de la phase qui aurait dû démarrer à temps (0 si le pattern se termine)
 	uint16_t next_duration_ms = 0;
-	if (pattern->current_step_id + 1u < pattern->state_buffer->length) {
+	if (pattern->current_step_id + 1u < pattern->sequence->length) {
 		next_duration_ms = pattern->sequence->steps[pattern->current_step_id + 1u].duration_ms;
 	} else if (pattern->cycle_target == PATTERN_UNLIMITED_MS ||
 	           pattern->cycles_done + 1u < pattern->cycle_target) {
@@ -85,7 +84,7 @@ OutputPatternEvent_t output_pattern_update(OutputPattern_t *pattern, time_ms_t n
 	}
 
 	//Dans les deux cas (running et paused), on pointe le step suivant
-	if (pattern->current_step_id + 1u < pattern->state_buffer->length) {
+	if (pattern->current_step_id + 1u < pattern->sequence->length) {
 		pattern->current_step_id++;
 	} else {
 		// On a terminé un cycle, on incrémente le compteur de cycles réalisés
@@ -105,13 +104,13 @@ OutputPatternEvent_t output_pattern_update(OutputPattern_t *pattern, time_ms_t n
 		//On repart sur un nouveau cycle, les états des steps repartent de zéro
 		pattern->current_step_id = 0;
 
-		for (uint8_t i = 0; i < pattern->state_buffer->length; ++i) {
-			pattern->state_buffer->data[i].state = OUTPUT_STEP_PENDING;
-			pattern->state_buffer->data[i].step_start_ms = 0;
+		for (uint8_t i = 0; i < pattern->sequence->length; ++i) {
+			pattern->states[i].state = OUTPUT_STEP_PENDING;
+			pattern->states[i].step_start_ms = 0;
 		}
 	}
 
-	current_state = &pattern->state_buffer->data[pattern->current_step_id];
+	current_state = &pattern->states[pattern->current_step_id];
 	current_step = &pattern->sequence->steps[pattern->current_step_id];
 
 	current_state->state = OUTPUT_STEP_RUNNING;
@@ -130,21 +129,27 @@ OutputPatternEvent_t output_pattern_update(OutputPattern_t *pattern, time_ms_t n
 }
 
 // On transmet la séquence à exécuter
-bool output_pattern_run(OutputPattern_t *pattern, const OutputPatternSequence_t *sequence, OutputPatternStateBuffer_t *state_buffer, uint16_t cycle_target, bool abort_on_fail, TargetState_t state_on_fail, time_ms_t now_ms)
+bool output_pattern_run(OutputPattern_t *pattern,
+						const OutputPatternSequence_t *sequence,
+						OutputPatternStepState_t *states,
+						uint8_t states_count,
+						uint16_t cycle_target,
+						bool abort_on_fail,
+						TargetState_t state_on_fail,
+						time_ms_t now_ms)
 {
 	if (pattern == NULL ||
 		sequence == NULL ||
 		sequence->steps == NULL ||
-		state_buffer == NULL ||
-		state_buffer->data == NULL ||
+		states == NULL ||
 		sequence->length == 0 ||
-		state_buffer->length != sequence->length)
+		states_count != sequence->length)
 	{
 		return false;
 	}
 
 	pattern->sequence = sequence;
-	pattern->state_buffer = state_buffer;
+	pattern->states = states;
 	pattern->cycle_target = cycle_target;
 	pattern->abort_on_fail = abort_on_fail;
 	pattern->state_on_fail = state_on_fail;
@@ -152,7 +157,7 @@ bool output_pattern_run(OutputPattern_t *pattern, const OutputPatternSequence_t 
 	output_pattern_reset(pattern);
 
 	//On active le pattern
-	OutputPatternStepState_t *current_state = &pattern->state_buffer->data[pattern->current_step_id];
+	OutputPatternStepState_t *current_state = &pattern->states[pattern->current_step_id];
 	const OutputPatternStep_t *current_step = &pattern->sequence->steps[pattern->current_step_id];
 
 	pattern->execution_state = PATTERN_EXEC_RUNNING;
@@ -175,12 +180,12 @@ void output_pattern_reset(OutputPattern_t *pattern)
 	pattern->flag_any_failed = false;
 	pattern->flag_any_skipped = false;
 
-	if (pattern->state_buffer == NULL || pattern->state_buffer->data == NULL) return;
+	if (pattern->sequence == NULL || pattern->states == NULL) return;
 
-	for (uint8_t i = 0; i < pattern->state_buffer->length; ++i)
+	for (uint8_t i = 0; i < pattern->sequence->length; ++i)
 	{
-		pattern->state_buffer->data[i].state = OUTPUT_STEP_PENDING;
-		pattern->state_buffer->data[i].step_start_ms = 0;
+		pattern->states[i].state = OUTPUT_STEP_PENDING;
+		pattern->states[i].step_start_ms = 0;
 	}
 }
 
@@ -188,8 +193,8 @@ void output_pattern_reset(OutputPattern_t *pattern)
 
 OutputPatternEvent_t output_pattern_stop(OutputPattern_t *pattern, TargetState_t output_state, time_ms_t now_ms)
 {
-	if (pattern == NULL || pattern->state_buffer == NULL || pattern->state_buffer->data == NULL ||
-		pattern->current_step_id >= pattern->state_buffer->length) {
+	if (pattern == NULL || pattern->sequence == NULL || pattern->states == NULL ||
+		pattern->current_step_id >= pattern->sequence->length) {
 		return make_event(pattern);
 	}
 
@@ -200,7 +205,7 @@ OutputPatternEvent_t output_pattern_stop(OutputPattern_t *pattern, TargetState_t
 
 	if (was_running) {
 		//On utilise le state du step actuel pour mémoriser le temps déjà écoulé dans le step
-		OutputPatternStepState_t *state = &pattern->state_buffer->data[pattern->current_step_id];
+		OutputPatternStepState_t *state = &pattern->states[pattern->current_step_id];
 		state->step_start_ms = (time_ms_t)(now_ms - state->step_start_ms);
 	}
 
@@ -234,9 +239,8 @@ OutputPatternEvent_t output_pattern_pause(OutputPattern_t *pattern, TargetState_
 
 OutputPatternEvent_t output_pattern_resume(OutputPattern_t *pattern, time_ms_t now_ms)
 {
-	if (pattern == NULL || pattern->sequence == NULL || pattern->state_buffer == NULL ||
-		pattern->state_buffer->data == NULL ||
-		pattern->current_step_id >= pattern->state_buffer->length) {
+	if (pattern == NULL || pattern->sequence == NULL || pattern->states == NULL ||
+		pattern->current_step_id >= pattern->sequence->length) {
 		return make_event(pattern);
 	}
 
@@ -249,7 +253,7 @@ OutputPatternEvent_t output_pattern_resume(OutputPattern_t *pattern, time_ms_t n
 	// Si le pattern était en stopped, on doit mettre à jour le timer du stepState en cours
 	// On récupère le temps déjà écoulé (et sauvegardé) dans le step_start_ms du state du step
 	if (pattern->execution_state == PATTERN_EXEC_STOPPED) {
-		OutputPatternStepState_t *state = &pattern->state_buffer->data[pattern->current_step_id];
+		OutputPatternStepState_t *state = &pattern->states[pattern->current_step_id];
 		state->step_start_ms = (time_ms_t)(now_ms - state->step_start_ms);
 	}
 

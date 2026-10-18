@@ -18,8 +18,7 @@ static const OutputPatternStep_t steps[] = {
 
 static const OutputPatternSequence_t sequence = { steps, 2 };
 
-static OutputPatternStepState_t buffer_data[2];
-static OutputPatternStateBuffer_t buffer = { buffer_data, 2 };
+static OutputPatternStepState_t states[2];
 
 static OutputPattern_t pattern;
 static output_t out;
@@ -31,8 +30,9 @@ static void setup(bool abort_on_fail, TargetState_t state_on_fail, uint16_t cycl
 
     output_init(&out, mock_write, 3, true, false);
     output_pattern_init(&pattern, &out);
-    TEST_ASSERT(output_pattern_run(&pattern, &sequence, &buffer, cycles,
-                                   abort_on_fail, state_on_fail, now_ms));
+    TEST_ASSERT(output_pattern_run(&pattern, &sequence, states,
+                                   (uint8_t)(sizeof(states) / sizeof(states[0])),
+                                   cycles, abort_on_fail, state_on_fail, now_ms));
 }
 
 int main(void)
@@ -49,12 +49,12 @@ int main(void)
         event = output_pattern_update(&pattern, t);
     }
     TEST_ASSERT(event.pattern_state == PATTERN_EXEC_RUNNING);
-    TEST_ASSERT(buffer_data[0].state == OUTPUT_STEP_RUNNING);
+    TEST_ASSERT(states[0].state == OUTPUT_STEP_RUNNING);
 
     /* Fin de la première étape : passage à l'étape inactive. */
     event = output_pattern_update(&pattern, 100);
-    TEST_ASSERT(buffer_data[0].state == OUTPUT_STEP_COMPLETED);
-    TEST_ASSERT(buffer_data[1].state == OUTPUT_STEP_RUNNING);
+    TEST_ASSERT(states[0].state == OUTPUT_STEP_COMPLETED);
+    TEST_ASSERT(states[1].state == OUTPUT_STEP_RUNNING);
     TEST_ASSERT(!output_is_active(&out));
     TEST_ASSERT(!event.new_failed);
     TEST_ASSERT(!event.new_skipped);
@@ -67,7 +67,7 @@ int main(void)
     /* Fin du dernier cycle. */
     event = output_pattern_update(&pattern, 300);
     TEST_ASSERT(event.pattern_state == PATTERN_EXEC_COMPLETED);
-    TEST_ASSERT(buffer_data[1].state == OUTPUT_STEP_COMPLETED);
+    TEST_ASSERT(states[1].state == OUTPUT_STEP_COMPLETED);
     TEST_ASSERT(event.cycles_done == 1);
     TEST_ASSERT(!event.new_failed);
     TEST_ASSERT(output_pattern_is_completed(&pattern));
@@ -75,15 +75,15 @@ int main(void)
     /* Un pattern terminé ne bouge plus. */
     event = output_pattern_update(&pattern, 400);
     TEST_ASSERT(event.pattern_state == PATTERN_EXEC_COMPLETED);
-    TEST_ASSERT(buffer_data[1].state == OUTPUT_STEP_COMPLETED);
+    TEST_ASSERT(states[1].state == OUTPUT_STEP_COMPLETED);
 
     /* ---------- tick trop long, sans interruption ---------- */
     setup(false, OUTPUT_OFF, 1, 1000);
     event = output_pattern_update(&pattern, 1600);   /* 600 ms pour une étape de 100 ms */
     TEST_ASSERT(event.new_failed);
-    TEST_ASSERT(buffer_data[0].state == OUTPUT_STEP_FAILED);
+    TEST_ASSERT(states[0].state == OUTPUT_STEP_FAILED);
     TEST_ASSERT(event.pattern_state == PATTERN_EXEC_RUNNING);
-    TEST_ASSERT(buffer_data[1].state == OUTPUT_STEP_RUNNING);
+    TEST_ASSERT(states[1].state == OUTPUT_STEP_RUNNING);
     TEST_ASSERT(!output_is_active(&out));
 
     /* Le défaut n'est signalé qu'une fois. */
@@ -95,7 +95,7 @@ int main(void)
     event = output_pattern_update(&pattern, 2600);
     TEST_ASSERT(event.new_failed);
     TEST_ASSERT(event.pattern_state == PATTERN_EXEC_ABORDED);
-    TEST_ASSERT(buffer_data[0].state == OUTPUT_STEP_FAILED);
+    TEST_ASSERT(states[0].state == OUTPUT_STEP_FAILED);
     TEST_ASSERT(output_is_active(&out));            /* state_on_fail appliqué */
     TEST_ASSERT(g_last_pin == 3);
 
@@ -113,8 +113,8 @@ int main(void)
     event = output_pattern_update(&pattern, 3150);
     TEST_ASSERT(event.new_skipped);
     TEST_ASSERT(!event.new_failed);
-    TEST_ASSERT(buffer_data[0].state == OUTPUT_STEP_SKIPPED);
-    TEST_ASSERT(buffer_data[1].state == OUTPUT_STEP_RUNNING);
+    TEST_ASSERT(states[0].state == OUTPUT_STEP_SKIPPED);
+    TEST_ASSERT(states[1].state == OUTPUT_STEP_RUNNING);
     TEST_ASSERT(!output_is_active(&out));           /* la sortie reste figée */
 
     /* ---------- pause avec un tick trop long : échec comme en marche ---------- */
@@ -122,7 +122,7 @@ int main(void)
     (void)output_pattern_pause(&pattern, OUTPUT_OFF, 4000);
     event = output_pattern_update(&pattern, 4600);
     TEST_ASSERT(event.new_failed);
-    TEST_ASSERT(buffer_data[0].state == OUTPUT_STEP_FAILED);
+    TEST_ASSERT(states[0].state == OUTPUT_STEP_FAILED);
     TEST_ASSERT(event.pattern_state == PATTERN_EXEC_ABORDED);
     TEST_ASSERT(output_is_active(&out));
 
@@ -134,7 +134,7 @@ int main(void)
 
     event = output_pattern_update(&pattern, 6000);
     TEST_ASSERT(event.pattern_state == PATTERN_EXEC_STOPPED);
-    TEST_ASSERT(buffer_data[0].state == OUTPUT_STEP_RUNNING);
+    TEST_ASSERT(states[0].state == OUTPUT_STEP_RUNNING);
 
     event = output_pattern_resume(&pattern, 7000);
     TEST_ASSERT(event.pattern_state == PATTERN_EXEC_RUNNING);
@@ -142,28 +142,28 @@ int main(void)
 
     /* 40 ms consommés avant l'arrêt : 50 ms plus tard, l'étape court toujours. */
     event = output_pattern_update(&pattern, 7050);
-    TEST_ASSERT(buffer_data[0].state == OUTPUT_STEP_RUNNING);
+    TEST_ASSERT(states[0].state == OUTPUT_STEP_RUNNING);
 
     /* 40 + 60 = 100 ms : l'étape est validée. */
     event = output_pattern_update(&pattern, 7060);
-    TEST_ASSERT(buffer_data[0].state == OUTPUT_STEP_COMPLETED);
+    TEST_ASSERT(states[0].state == OUTPUT_STEP_COMPLETED);
 
     /* ---------- enchaînement de deux cycles ---------- */
     setup(false, OUTPUT_OFF, 2, 8000);
 
     event = output_pattern_update(&pattern, 8100);   /* fin de l'étape 0 du 1er cycle */
-    TEST_ASSERT(buffer_data[1].state == OUTPUT_STEP_RUNNING);
+    TEST_ASSERT(states[1].state == OUTPUT_STEP_RUNNING);
     TEST_ASSERT(!output_is_active(&out));
 
     event = output_pattern_update(&pattern, 8300);   /* fin du 1er cycle */
     TEST_ASSERT(event.pattern_state == PATTERN_EXEC_RUNNING);
     TEST_ASSERT(event.cycles_done == 1);
-    TEST_ASSERT(buffer_data[0].state == OUTPUT_STEP_RUNNING);
+    TEST_ASSERT(states[0].state == OUTPUT_STEP_RUNNING);
     TEST_ASSERT(output_is_active(&out));
     TEST_ASSERT(!output_pattern_is_completed(&pattern));
 
     event = output_pattern_update(&pattern, 8400);   /* fin de l'étape 0 du 2e cycle */
-    TEST_ASSERT(buffer_data[1].state == OUTPUT_STEP_RUNNING);
+    TEST_ASSERT(states[1].state == OUTPUT_STEP_RUNNING);
     TEST_ASSERT(!output_is_active(&out));
 
     event = output_pattern_update(&pattern, 8600);   /* fin du 2e cycle */

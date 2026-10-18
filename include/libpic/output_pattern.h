@@ -9,8 +9,21 @@
  * L'application fournit :
  *
  *   - la séquence, généralement déclarée en Flash ;
- *   - un buffer d'états (OutputPatternStateBuffer_t) en RAM, dont la longueur
- *     doit être identique à celle de la séquence.
+ *   - un tableau d'états en RAM (OutputPatternStepState_t), d'exactement
+ *     sequence->length éléments : un état par étape.
+ *
+ * La taille du tableau d'états peut être transmise sans risque de
+ * désynchronisation en la calculant à partir du tableau lui-même :
+ *
+ *   #define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
+ *
+ *   output_pattern_run(&pattern, &sequence, states, ARRAY_SIZE(states), ...);
+ *
+ * sizeof est un opérateur du langage : le rapport est une constante évaluée
+ * par le compilateur, aucune division n'est exécutée par le PIC et aucune
+ * routine de division n'est liée (mesuré sur PIC16F15213 avec XC8 4.00 :
+ * environ 70 octets de Flash de moins qu'une division sur variables). Le motif
+ * ne s'applique qu'à un vrai tableau, jamais à un pointeur.
  *
  * Le module pilote lui-même la sortie associée lors de
  * output_pattern_init(). Les changements d'état de cette sortie doivent donc
@@ -35,6 +48,10 @@
  * Le temps de chaque étape est mesuré depuis son début avec un horodatage
  * absolu en millisecondes. Les valeurs now_ms doivent provenir du même
  * compteur monotone que celui utilisé par output_pattern_update().
+ *
+ * L'intervalle entre deux appels doit rester inférieur à 65,5 s : time_ms_t est
+ * codé sur 16 bits et les durées sont calculées modulo 65 536 ms. Une pause ou
+ * un arrêt long n'est pas concerné, seul compte l'intervalle entre deux appels.
  *
  * La résolution temporelle dépend donc uniquement de la fréquence d'appel de
  * output_pattern_update() : c'est à l'application de choisir un tick adapté à
@@ -80,7 +97,7 @@
  * Si abort_on_fail vaut true, le premier échec d'une étape interrompt le
  * pattern (PATTERN_EXEC_ABORDED) et applique state_on_fail à la sortie. Sinon
  * le pattern poursuit sa séquence : l'application surveille new_failed, ou
- * inspecte les états de son buffer, pour réagir elle-même.
+ * inspecte les états de son tableau, pour réagir elle-même.
  *
  * Les événements retournés (OutputPatternEvent_t) sont des instantanés :
  * new_failed et new_skipped signalent les échecs et les étapes passées depuis
@@ -98,15 +115,12 @@
  *   };
  *
  *   static OutputPatternStepState_t blink_states[2];
- *   static OutputPatternStateBuffer_t blink_buffer = {
- *       blink_states, 2
- *   };
- *
  *   static OutputPattern_t blink_pattern;
  *
  *   output_pattern_init(&blink_pattern, &led);
- *   output_pattern_run(&blink_pattern, &blink_sequence, &blink_buffer,
- *                      3, false, OUTPUT_OFF, now_ms);
+ *   output_pattern_run(&blink_pattern, &blink_sequence, blink_states,
+ *                      ARRAY_SIZE(blink_states), 3, false, OUTPUT_OFF,
+ *                      now_ms);
  *
  *   // Puis, périodiquement :
  *   OutputPatternEvent_t event =
@@ -156,12 +170,6 @@ typedef struct {
     OutputPatternStepStateEnum_t state;        /**< État actuel de l'étape. */
 } OutputPatternStepState_t;
 
-/** Buffer d'états fourni par l'application, de même longueur que la séquence. */
-typedef struct {
-    OutputPatternStepState_t *data;   /**< Tableau d'états des étapes (en RAM). */
-    uint8_t length;                   /**< Nombre d'états du tableau. */
-} OutputPatternStateBuffer_t;
-
 /** Résultat retourné par output_pattern_update() et par les fonctions d'arrêt. */
 typedef struct {
     PatternExecutionState_t pattern_state;   /**< État d'exécution du pattern. */
@@ -174,7 +182,7 @@ typedef struct {
 /** Structure principale d'un pattern de sortie. */
 typedef struct {
     const OutputPatternSequence_t *sequence;   /**< Séquence à réaliser (transmise par l'utilisateur). */
-    OutputPatternStateBuffer_t *state_buffer;  /**< États des étapes (fourni par l'utilisateur). */
+    OutputPatternStepState_t *states;          /**< États des étapes (en RAM, fournis par l'utilisateur). */
     output_t *output;                          /**< Sortie pilotée par le pattern. */
     PatternExecutionState_t execution_state;   /**< État d'exécution courant. */
     uint16_t cycle_target;                     /**< Nombre total de cycles à réaliser, 0 = illimité. */
@@ -225,21 +233,31 @@ OutputPatternEvent_t output_pattern_update(OutputPattern_t *pattern, time_ms_t n
 /**
  * Transmet la séquence à exécuter et démarre le pattern.
  *
- * @param pattern      Pattern à démarrer.
- * @param sequence     Séquence à réaliser (doit rester valide).
- * @param state_buffer Buffer d'états en RAM, de même longueur que la séquence.
- * @param cycle_target Nombre de cycles à réaliser, PATTERN_UNLIMITED_MS pour
- *                     un nombre illimité.
+ * @param pattern       Pattern à démarrer.
+ * @param sequence      Séquence à réaliser (doit rester valide).
+ * @param states        Tableau d'états en RAM, d'exactement sequence->length
+ *                      éléments (un par étape).
+ * @param states_count  Nombre d'éléments de states : doit valoir
+ *                      sequence->length (passer ARRAY_SIZE(states)).
+ * @param cycle_target  Nombre de cycles à réaliser, PATTERN_UNLIMITED_MS pour
+ *                      un nombre illimité.
  * @param abort_on_fail true pour interrompre le pattern au premier échec.
  * @param state_on_fail État appliqué à la sortie en cas d'échec.
- * @param now_ms       Instant de démarrage en millisecondes.
+ * @param now_ms        Instant de démarrage en millisecondes.
  * @return true si les arguments sont valides, false sinon (pointeur NULL,
- *         séquence vide ou longueurs incohérentes).
+ *         séquence vide, taille du tableau d'états incorrecte).
  *
  * @note L'état de la première étape est appliqué immédiatement à la sortie ;
  *       les cycles repartent de zéro (les états précédents sont effacés).
  */
-bool output_pattern_run(OutputPattern_t *pattern, const OutputPatternSequence_t *sequence, OutputPatternStateBuffer_t *state_buffer, uint16_t cycle_target, bool abort_on_fail, TargetState_t state_on_fail, time_ms_t now_ms);
+bool output_pattern_run(OutputPattern_t *pattern,
+                        const OutputPatternSequence_t *sequence,
+                        OutputPatternStepState_t *states,
+                        uint8_t states_count,
+                        uint16_t cycle_target,
+                        bool abort_on_fail,
+                        TargetState_t state_on_fail,
+                        time_ms_t now_ms);
 
 /**
  * Réinitialise toutes les étapes de la séquence en cours et arrête le pattern.

@@ -20,8 +20,8 @@ static const InputPatternStep_t long_press_steps[] = {
 };
 
 static const MatcherInputPatternSequence_t patterns[] = {
-    { short_click_steps, 1, 0 },
-    { long_press_steps,  1, 1 }
+    { short_click_steps, 1 },
+    { long_press_steps,  1 }
 };
 
 static const MatcherInputPatternList_t pattern_list = {
@@ -34,7 +34,7 @@ static const InputPatternStep_t invalid_steps[] = {
 };
 
 static const MatcherInputPatternSequence_t invalid_patterns[] = {
-    { invalid_steps, 1, 0 }
+    { invalid_steps, 1 }
 };
 
 static const MatcherInputPatternList_t invalid_list = {
@@ -53,7 +53,9 @@ int main(void)
     /* Anti-rebond de 10 ms et appels toutes les 10 ms -> événements fiables. */
     g_pin_state = STATE_LOW;
     input_init(&button, mock_read, 0, true, 10);
-    TEST_ASSERT(input_pattern_matcher_init(&matcher, &button, &pattern_list, states, false));
+    TEST_ASSERT(input_pattern_matcher_init(&matcher, &button, &pattern_list, states,
+                                           (uint8_t)(sizeof(states) / sizeof(states[0])),
+                                           false));
 
     /* --- clic court --- */
 
@@ -143,7 +145,9 @@ int main(void)
 
     /* --- configuration invalide --- */
 
-    TEST_ASSERT(!input_pattern_matcher_init(&bad_matcher, &button, &invalid_list, bad_states, false));
+    TEST_ASSERT(!input_pattern_matcher_init(&bad_matcher, &button, &invalid_list, bad_states,
+                                            (uint8_t)(sizeof(bad_states) / sizeof(bad_states[0])),
+                                            false));
     TEST_ASSERT(bad_states[0].error_config);
     TEST_ASSERT(bad_states[0].state == IPS_INACTIVE);
     TEST_ASSERT(input_pattern_matcher_all_inactive(&bad_matcher));

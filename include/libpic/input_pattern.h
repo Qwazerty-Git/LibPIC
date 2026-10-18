@@ -40,6 +40,9 @@
  * absolu en millisecondes. Les valeurs now_ms doivent provenir du même
  * compteur monotone que celui utilisé par input_update().
  *
+ * L'intervalle entre deux appels doit rester inférieur à 65,5 s : time_ms_t est
+ * codé sur 16 bits et les durées sont calculées modulo 65 536 ms.
+ *
  * Un événement inattendu ou non fiable invalide le pattern courant, mais ne
  * constitue pas une erreur de configuration.
  *
@@ -110,9 +113,9 @@
  *   };
  *
  *   static const MatcherInputPatternSequence_t patterns[] = {
- *       { short_click_steps,  1, 0 },
- *       { long_press_steps,   1, 1 },
- *       { double_click_steps, 3, 2 }
+ *       { short_click_steps,  1 },
+ *       { long_press_steps,   1 },
+ *       { double_click_steps, 3 }
  *   };
  *
  *   static const MatcherInputPatternList_t pattern_list = {
@@ -182,7 +185,6 @@ typedef struct {
 typedef struct {
     const InputPatternStep_t *steps;   /**< Tableau des étapes (en Flash). */
     uint8_t length;                    /**< Nombre d'étapes. */
-    uint8_t id;                        /**< Identifiant pour l'utilisateur. */
 } MatcherInputPatternSequence_t;
 
 /** Liste des patterns surveillés par un matcher. */
@@ -218,16 +220,20 @@ typedef struct {
  * @param matcher      Matcher à initialiser.
  * @param input        Entrée à surveiller.
  * @param pattern_list Liste des patterns à reconnaître (doit rester valide).
- * @param states       Tableau d'états en RAM, d'au moins pattern_list->count
- *                     éléments.
+ * @param states       Tableau d'états en RAM, d'exactement pattern_list->count
+ *                     éléments (un par pattern).
+ * @param states_count Nombre d'éléments de states : doit valoir
+ *                     pattern_list->count (passer ARRAY_SIZE(states)).
  * @param paused       true pour démarrer en pause.
- * @return true si la configuration est valide, false si un argument est NULL
- *         ou si au moins un pattern contient une erreur de configuration.
+ * @return true si la configuration est valide, false si un argument est NULL,
+ *         si states_count ne correspond pas au nombre de patterns, ou si au
+ *         moins un pattern contient une erreur de configuration.
  */
 bool input_pattern_matcher_init(MatcherInputPattern_t *matcher,
                         input_t *input,
                         const MatcherInputPatternList_t *pattern_list,
                         MatcherInputPatternState_t *states,
+                        uint8_t states_count,
                         bool paused);
 
 /**
@@ -279,11 +285,11 @@ bool input_pattern_matcher_all_inactive(const MatcherInputPattern_t *matcher);
  * Indique si un pattern donné a été reconnu.
  *
  * @param matcher Matcher à consulter.
- * @param id      Identifiant du pattern (champ id de sa définition).
+ * @param index   Index du pattern dans la liste (0 = premier).
  * @return true si l'état du pattern vaut IPS_JUST_MATCHED ou IPS_MATCHED,
- *         false si le pattern est inconnu ou non reconnu.
+ *         false si l'index est hors limites ou si le pattern n'est pas reconnu.
  */
-bool input_pattern_matcher_is_matched(const MatcherInputPattern_t *matcher, uint8_t id);
+bool input_pattern_matcher_is_matched(const MatcherInputPattern_t *matcher, uint8_t index);
 
 #ifdef __cplusplus
 }
