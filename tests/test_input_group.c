@@ -4,8 +4,8 @@
 static state_t g_pin_a = STATE_LOW;
 static state_t g_pin_b = STATE_LOW;
 
-static state_t read_a(void) { return g_pin_a; }
-static state_t read_b(void) { return g_pin_b; }
+static state_t read_a(uint16_t pin_id) { (void)pin_id; return g_pin_a; }
+static state_t read_b(uint16_t pin_id) { (void)pin_id; return g_pin_b; }
 
 int main(void)
 {
@@ -14,8 +14,8 @@ int main(void)
     input_t *inputs[2];
     input_group_t group;
 
-    input_init(&input_a, read_a, true, 0);
-    input_init(&input_b, read_b, true, 0);
+    input_init(&input_a, read_a, 0, true, 0);
+    input_init(&input_b, read_b, 1, true, 0);
 
     inputs[0] = &input_a;
     inputs[1] = &input_b;

@@ -4,8 +4,8 @@
 static state_t g_pin_a = STATE_LOW;
 static state_t g_pin_b = STATE_LOW;
 
-static void write_a(state_t state) { g_pin_a = state; }
-static void write_b(state_t state) { g_pin_b = state; }
+static void write_a(uint16_t pin_id, state_t state) { (void)pin_id; g_pin_a = state; }
+static void write_b(uint16_t pin_id, state_t state) { (void)pin_id; g_pin_b = state; }
 
 int main(void)
 {
@@ -14,8 +14,8 @@ int main(void)
     output_t *outputs[2];
     output_group_t group;
 
-    output_init(&output_a, write_a, true);
-    output_init(&output_b, write_b, true);
+    output_init(&output_a, write_a, 0, true, false);
+    output_init(&output_b, write_b, 1, true, false);
 
     outputs[0] = &output_a;
     outputs[1] = &output_b;

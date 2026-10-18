@@ -38,10 +38,11 @@ cible PIC que sur un hôte de développement pour les tests.
 
 ## Compilation et tests
 
-La bibliothèque et ses tests unitaires se compilent avec CMake :
+La bibliothèque et ses tests unitaires se compilent avec CMake (les tests sont
+désactivés par défaut) :
 
 ```sh
-cmake -S . -B build
+cmake -S . -B build -DLIBPIC_BUILD_TESTS=ON
 cmake --build build
 ctest --test-dir build --output-on-failure
 ```
