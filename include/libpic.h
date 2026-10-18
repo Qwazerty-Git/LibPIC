@@ -13,6 +13,7 @@
 #include "libpic/output_group.h"
 #include "libpic/output_pattern.h"
 #include "libpic/output_pwm.h"
+#include "libpic/output_pwm_pattern.h"
 #include "libpic/timer.h"
 #include "libpic/trigger.h"
 

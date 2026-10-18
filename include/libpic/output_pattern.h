@@ -134,28 +134,16 @@
 #ifndef LIBPIC_OUTPUT_PATTERN_H
 #define LIBPIC_OUTPUT_PATTERN_H
 
-/** Nombre de cycles illimité (valeur sentinelle de cycle_target). */
-#define PATTERN_UNLIMITED_MS 0
-
 #include "output.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/** États possibles d'une étape durant l'exécution d'un pattern. */
-typedef enum {
-    OUTPUT_STEP_PENDING = 0x00u,     /**< Pas encore commencée. */
-    OUTPUT_STEP_RUNNING = 0x01u,     /**< En cours. */
-    OUTPUT_STEP_COMPLETED = 0x02u,   /**< Réalisée normalement. */
-    OUTPUT_STEP_SKIPPED = 0x03u,     /**< Passée sans être exécutée. */
-    OUTPUT_STEP_FAILED = 0x04u       /**< Échec : dépassement de durée trop important (voir @file). */
-} OutputPatternStepStateEnum_t;
-
 /** Décrit une étape d'un pattern. */
 typedef struct {
     bool active;             /**< État de la sortie durant l'étape (true = actif). */
-    uint16_t duration_ms;    /**< Durée de l'étape, en millisecondes. */
+    time_ms_t duration_ms;   /**< Durée de l'étape, en millisecondes. */
 } OutputPatternStep_t;
 
 /** Séquence d'étapes formant un pattern. */
@@ -164,29 +152,14 @@ typedef struct {
     uint8_t length;                     /**< Nombre d'étapes. */
 } OutputPatternSequence_t;
 
-/** État interne d'une étape (en RAM). */
-typedef struct {
-    time_ms_t step_start_ms;                   /**< Temps de début de l'étape actuelle. */
-    OutputPatternStepStateEnum_t state;        /**< État actuel de l'étape. */
-} OutputPatternStepState_t;
-
-/** Résultat retourné par output_pattern_update() et par les fonctions d'arrêt. */
-typedef struct {
-    PatternExecutionState_t pattern_state;   /**< État d'exécution du pattern. */
-    uint8_t current_step;                    /**< Index de l'étape en cours (0 = première). */
-    uint16_t cycles_done;                    /**< Nombre de cycles réalisés. */
-    bool new_failed;                         /**< true si au moins une étape a échoué depuis l'appel précédent. */
-    bool new_skipped;                        /**< true si au moins une étape a été passée depuis l'appel précédent. */
-} OutputPatternEvent_t;
-
 /** Structure principale d'un pattern de sortie. */
 typedef struct {
     const OutputPatternSequence_t *sequence;   /**< Séquence à réaliser (transmise par l'utilisateur). */
     OutputPatternStepState_t *states;          /**< États des étapes (en RAM, fournis par l'utilisateur). */
     output_t *output;                          /**< Sortie pilotée par le pattern. */
     PatternExecutionState_t execution_state;   /**< État d'exécution courant. */
-    uint16_t cycle_target;                     /**< Nombre total de cycles à réaliser, 0 = illimité. */
-    uint16_t cycles_done;                      /**< Nombre de cycles réalisés. */
+    uint8_t cycle_target;                     /**< Nombre total de cycles à réaliser, 0 = illimité. */
+    uint8_t cycles_done;                      /**< Nombre de cycles réalisés. */
     bool abort_on_fail;                        /**< true pour interrompre le pattern au premier échec. */
     TargetState_t state_on_fail;               /**< État appliqué à la sortie en cas d'échec. */
 
@@ -214,9 +187,9 @@ bool output_pattern_init(OutputPattern_t *pattern, output_t *output);
  *
  * @note Le module pilote la sortie : l'application ne doit pas appeler
  *       output_set(), output_on() ou output_off() sur cette sortie pendant
- *       l'exécution d'un pattern. L'état de l'étape courante est réappliqué à
- *       chaque appel tant que le pattern est en PATTERN_EXEC_RUNNING ; la
- *       sortie n'est pas touchée pendant une pause.
+ *       l'exécution d'un pattern. L'état de l'étape courante est appliqué 
+ *       à chaque changement d'étape tant que le pattern est en PATTERN_EXEC_RUNNING ; 
+ *       la sortie n'est pas touchée pendant une pause.
  *
  * @note Une étape validée avec un dépassement d'au moins la durée de l'étape
  *       suivante est marquée OUTPUT_STEP_FAILED et l'événement porte
@@ -254,7 +227,7 @@ bool output_pattern_run(OutputPattern_t *pattern,
                         const OutputPatternSequence_t *sequence,
                         OutputPatternStepState_t *states,
                         uint8_t states_count,
-                        uint16_t cycle_target,
+                        uint8_t cycle_target,
                         bool abort_on_fail,
                         TargetState_t state_on_fail,
                         time_ms_t now_ms);

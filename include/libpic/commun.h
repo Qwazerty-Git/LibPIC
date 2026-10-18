@@ -20,6 +20,17 @@ typedef enum {
     OUTPUT_KEEP
 } TargetState_t;
 
+/**
+ * Valeur sentinelle « pas de limite ».
+ *
+ * - input_pattern : max_ms == PATTERN_UNLIMITED_MS : l'étape n'a pas de durée
+ *   maximale et attend l'événement ;
+ * - output_pattern / output_pwm_pattern : cycle_target == PATTERN_UNLIMITED_MS :
+ *   nombre de cycles illimité.
+ */
+#define PATTERN_UNLIMITED_MS 0
+#define PATTERN_UNLIMITED_CYCLES 0
+
 typedef enum {
     PATTERN_EXEC_STOPPED,
     PATTERN_EXEC_PAUSED,
@@ -51,8 +62,37 @@ typedef state_t (*read_pin_fn)(uint16_t pin_id);
 /** Fonction d'écriture d'une broche physique (à fournir par le projet appelant). */
 typedef void (*write_pin_fn)(uint16_t pin_id, state_t state);
 
-/** Fonction d'écriture d'une broche pwm (à fournir pas le programme appelant). */
+/** Fonction d'écriture d'une broche pwm (à fournir par le programme appelant). */
 typedef void(*write_pwm_fn)(uint16_t pin_id, uint8_t  duty_cycle);
+
+/** États possibles d'une étape durant l'exécution d'un output_(pwm)_pattern. */
+typedef enum {
+    OUTPUT_STEP_PENDING = 0x00u,     /**< Pas encore commencée. */
+    OUTPUT_STEP_RUNNING = 0x01u,     /**< En cours. */
+    OUTPUT_STEP_COMPLETED = 0x02u,   /**< Réalisée normalement. */
+    OUTPUT_STEP_SKIPPED = 0x03u,     /**< Passée sans être exécutée. */
+    OUTPUT_STEP_FAILED = 0x04u       /**< Échec : dépassement de durée trop important (voir @file). */
+} OutputPatternStepStateEnum_t;
+
+/**
+ * État interne d'une étape (en RAM, fourni par l'utilisateur).
+ * Identique pour output_pattern et output_pwm_pattern.
+ */
+typedef struct {
+    time_ms_t step_start_ms;                   /**< Temps de début de l'étape actuelle. */
+    OutputPatternStepStateEnum_t state;        /**< État actuel de l'étape. */
+} OutputPatternStepState_t;
+
+/** Résultat retourné par output_(pwm)_pattern */
+typedef struct {
+    PatternExecutionState_t pattern_state;   /**< État d'exécution du pattern. */
+    uint8_t current_step;                    /**< Index de l'étape en cours (0 = première). */
+    uint8_t cycles_done;                     /**< Nombre de cycles réalisés (modulo 256). */
+    bool new_failed;                         /**< true si au moins une étape a échoué depuis l'appel précédent. */
+    bool new_skipped;                        /**< true si au moins une étape a été passée depuis l'appel précédent. */
+} OutputPatternEvent_t;
+
+
 
 #ifdef __cplusplus
 }

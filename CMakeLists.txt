@@ -26,6 +26,7 @@ add_library(libpic STATIC
     src/output_group.c
     src/output_pattern.c
     src/output_pwm.c
+    src/output_pwm_pattern.c
     src/timer.c
     src/trigger.c
 )

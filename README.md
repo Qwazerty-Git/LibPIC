@@ -19,6 +19,9 @@ La bibliothèque contient notamment :
 - **output_group_t** — gestion de groupe des sorties (`include/libpic/output_group.h`)
 - **output_pattern** — exécution de séquences d'états sur une sortie (clignotement,
   temporisation de sorties) (`include/libpic/output_pattern.h`)
+- **output_pwm_t** — sortie PWM pilotée en pourcentage (`include/libpic/output_pwm.h`)
+- **output_pwm_pattern** — exécution de séquences de rapports cycliques sur une sortie
+  PWM (montée, extinction, paliers) (`include/libpic/output_pwm_pattern.h`)
 - **timer_t** — gestion de temporisations non bloquantes (`include/libpic/timer.h`)
 - **trigger_t** — gestion de déclenchements et événements (`include/libpic/trigger.h`)
 

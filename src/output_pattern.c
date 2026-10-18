@@ -38,22 +38,17 @@ OutputPatternEvent_t output_pattern_update(OutputPattern_t *pattern, time_ms_t n
 
 	time_ms_t elapsed_ms = (time_ms_t)(now_ms - current_state->step_start_ms);
 
-	// Step en cours non terminé : la sortie reste dans l'état du step
-	if (elapsed_ms < current_step->duration_ms) {
-		if (pattern->execution_state == PATTERN_EXEC_RUNNING) {
-			apply_output(pattern, current_step->active ? OUTPUT_ON : OUTPUT_OFF);
-		}
-		return event;
-	}
+	// Step en cours non terminé : la sortie conserve l'état appliqué à son démarrage
+	if (elapsed_ms < current_step->duration_ms) return event;
 
 	// Écart entre la fin théorique du step et l'instant réel de validation
-	time_ms_t overrun_ms = elapsed_ms - current_step->duration_ms;
+	time_ms_t overrun_ms = (time_ms_t)(elapsed_ms - current_step->duration_ms);
 
 	// Durée de la phase qui aurait dû démarrer à temps (0 si le pattern se termine)
-	uint16_t next_duration_ms = 0;
+	time_ms_t next_duration_ms = 0;
 	if (pattern->current_step_id + 1u < pattern->sequence->length) {
 		next_duration_ms = pattern->sequence->steps[pattern->current_step_id + 1u].duration_ms;
-	} else if (pattern->cycle_target == PATTERN_UNLIMITED_MS ||
+	} else if (pattern->cycle_target == PATTERN_UNLIMITED_CYCLES ||
 	           pattern->cycles_done + 1u < pattern->cycle_target) {
 		next_duration_ms = pattern->sequence->steps[0].duration_ms;
 	}
@@ -83,7 +78,7 @@ OutputPatternEvent_t output_pattern_update(OutputPattern_t *pattern, time_ms_t n
 		return event;
 	}
 
-	//Dans les deux cas (running et paused), on pointe le step suivant
+	// Dans les deux cas (running et paused), on pointe le step suivant
 	if (pattern->current_step_id + 1u < pattern->sequence->length) {
 		pattern->current_step_id++;
 	} else {
@@ -91,7 +86,7 @@ OutputPatternEvent_t output_pattern_update(OutputPattern_t *pattern, time_ms_t n
 		pattern->cycles_done++;
 
 		// Dernier cycle réalisé -> pattern complet, la sortie conserve l'état de la dernière étape
-		if (pattern->cycle_target != PATTERN_UNLIMITED_MS && pattern->cycles_done >= pattern->cycle_target) {
+		if (pattern->cycle_target != PATTERN_UNLIMITED_CYCLES && pattern->cycles_done >= pattern->cycle_target) {
 			pattern->execution_state = PATTERN_EXEC_COMPLETED;
 
 			event.pattern_state = pattern->execution_state;
@@ -104,10 +99,10 @@ OutputPatternEvent_t output_pattern_update(OutputPattern_t *pattern, time_ms_t n
 		//On repart sur un nouveau cycle, les états des steps repartent de zéro
 		pattern->current_step_id = 0;
 
-		for (uint8_t i = 0; i < pattern->sequence->length; ++i) {
-			pattern->states[i].state = OUTPUT_STEP_PENDING;
-			pattern->states[i].step_start_ms = 0;
-		}
+		for (uint8_t i = 0; i < pattern->sequence->length; ++i)
+	{
+		pattern->states[i] = (OutputPatternStepState_t){0};
+	}
 	}
 
 	current_state = &pattern->states[pattern->current_step_id];
@@ -133,7 +128,7 @@ bool output_pattern_run(OutputPattern_t *pattern,
 						const OutputPatternSequence_t *sequence,
 						OutputPatternStepState_t *states,
 						uint8_t states_count,
-						uint16_t cycle_target,
+						uint8_t cycle_target,
 						bool abort_on_fail,
 						TargetState_t state_on_fail,
 						time_ms_t now_ms)
@@ -184,8 +179,7 @@ void output_pattern_reset(OutputPattern_t *pattern)
 
 	for (uint8_t i = 0; i < pattern->sequence->length; ++i)
 	{
-		pattern->states[i].state = OUTPUT_STEP_PENDING;
-		pattern->states[i].step_start_ms = 0;
+		pattern->states[i] = (OutputPatternStepState_t){0};
 	}
 }
 
@@ -271,7 +265,7 @@ bool output_pattern_is_completed(const OutputPattern_t *pattern)
 {
 	if (pattern == NULL) return false;
 
-	if (pattern->cycle_target == PATTERN_UNLIMITED_MS)
+	if (pattern->cycle_target == PATTERN_UNLIMITED_CYCLES)
 		return false; // Cycles illimités
 
 	return pattern->cycles_done >= pattern->cycle_target;

@@ -154,8 +154,11 @@
 #ifndef LIBPIC_INPUT_PATTERN_H
 #define LIBPIC_INPUT_PATTERN_H
 
-/** Durée maximale absente : l'étape attend l'événement sans limite de temps. */
-#define PATTERN_UNLIMITED_MS 0
+/*
+ * PATTERN_UNLIMITED_MS est défini dans commun.h : la valeur sentinelle est
+ * partagée par input_pattern (durée maximale absente) et par output_pattern /
+ * output_pwm_pattern (nombre de cycles illimité).
+ */
 
 /** Bit de poids fort d'un état de pattern, positionné lorsque le pattern est reconnu. */
 #define PATTERN_IS_MATCH_MASK 0x80
@@ -177,8 +180,8 @@ typedef enum {
 
 /** Décrit une étape d'un pattern. */
 typedef struct {
-    uint16_t min_ms;   /**< Durée minimale de l'étape, en millisecondes. */
-    uint16_t max_ms;   /**< Durée maximale, ou PATTERN_UNLIMITED_MS si aucune. */
+    time_ms_t min_ms;   /**< Durée minimale de l'étape, en millisecondes. */
+    time_ms_t max_ms;   /**< Durée maximale, ou PATTERN_UNLIMITED_MS si aucune. */
 } InputPatternStep_t;
 
 /** Séquence d'étapes formant un pattern, avec son identifiant applicatif. */
