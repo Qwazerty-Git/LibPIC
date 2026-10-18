@@ -202,7 +202,6 @@ typedef struct {
 /** Résultat retourné par input_pattern_matcher_update(). */
 typedef struct {
     bool any_matched;     /**< true si au moins un pattern a été validé. */
-    bool all_inactive;    /**< true si tous les patterns sont inactifs. */
 } MatcherInputPatternResult_t;
 
 /** Structure principale du matcher. */

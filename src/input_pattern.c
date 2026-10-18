@@ -159,7 +159,6 @@ MatcherInputPatternResult_t input_pattern_matcher_update(MatcherInputPattern_t *
 
             state->step_start_ms = now_ms;
             state->state = IPS_PENDING;
-            result.all_inactive = false;
             continue;
         } 
         else if ((!expected_event && has_event) || event_is_unreliable) 
@@ -197,10 +196,6 @@ MatcherInputPatternResult_t input_pattern_matcher_update(MatcherInputPattern_t *
         else if (can_match_by_time) {
             state->state = IPS_JUST_MATCHED;
             result.any_matched = true;
-        }
-
-        if (state->state != IPS_INACTIVE) {
-            result.all_inactive = false;
         }
     }
 

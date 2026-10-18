@@ -23,11 +23,21 @@ typedef struct {
     uint16_t pin_id;               /**< Identifiant de la broche physique (masque de bit). */
 } input_t;
 
-/** Événement d'entrée représentant un changement d'état d'une broche. */
+/**
+ * Instantané produit par input_update().
+ *
+ * Les fronts décrivent ce qui s'est produit pendant l'appel courant. reliable
+ * ne concerne que ces fronts : il vaut toujours false lorsqu'aucun front n'est
+ * signalé, il faut donc tester rising_edge / falling_edge avant de le lire.
+ */
 typedef struct {
-    bool rising_edge;
-    bool falling_edge;
-    bool reliable;
+    bool rising_edge;    /**< true si l'entrée vient de passer à l'état actif. */
+    bool falling_edge;   /**< true si l'entrée vient de passer à l'état inactif. */
+    bool reliable;       /**< true si le front de cet appel est fiable : l'intervalle
+                              depuis l'appel précédent ne dépasse pas le délai
+                              d'anti-rebond. Un appel trop espacé peut avoir manqué
+                              une transition : le front est alors signalé, mais
+                              marqué comme non fiable. */
 } input_event_t;
 
 /**
