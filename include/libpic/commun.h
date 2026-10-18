@@ -42,12 +42,9 @@ typedef state_t (*read_pin_fn)(uint16_t pin_id);
 
 /** Fonction d'écriture d'une broche physique (à fournir par le projet appelant). */
 typedef void (*write_pin_fn)(uint16_t pin_id, state_t state);
-<<<<<<< HEAD
 
 /** Fonction d'écriture d'une broche pwm (à fournir pas le programme appelant). */
 typedef void(*write_pwm_fn)(uint16_t pin_id, uint8_t  duty_cycle);
-=======
->>>>>>> 1cf8798933a35e7220dfd920e2ac4fbe02f0a1a1
 
 #ifdef __cplusplus
 }

@@ -36,10 +36,24 @@
  * absolu en millisecondes. Les valeurs now_ms doivent provenir du même
  * compteur monotone que celui utilisé par output_pattern_update().
  *
+ * La résolution temporelle dépend donc uniquement de la fréquence d'appel de
+ * output_pattern_update() : c'est à l'application de choisir un tick adapté à
+ * ce qu'elle pilote. Le module ne rattrape pas les étapes échues pendant une
+ * absence d'appel et n'avance que d'une étape par appel. Une étape dure donc
+ * toujours au moins duration_ms, et au plus duration_ms augmenté d'une période
+ * d'appel. Ce choix garantit qu'aucun état de sortie n'est abrégé (une phase
+ * n'est jamais plus courte que demandé), au prix d'une dérive cumulée si le
+ * tick est irrégulier. Pour un pilotage synchronisé sur un dispositif
+ * externe, préférer un module piloté par entrée.
+ *
  * output_pattern_pause() et output_pattern_stop() imposent un état à la
- * sortie (OUTPUT_ON, OUTPUT_OFF ou OUTPUT_KEEP). stop() mémorise le temps déjà
- * écoulé dans l'étape courante afin que output_pattern_resume() reprenne
- * exactement là où le pattern avait été figé.
+ * sortie (OUTPUT_ON, OUTPUT_OFF ou OUTPUT_KEEP). En pause, les étapes et les
+ * cycles continuent d'être consommés (les étapes échues sont marquées
+ * OUTPUT_STEP_SKIPPED) mais la sortie reste dans l'état imposé. stop() fige le
+ * pattern et mémorise le temps déjà écoulé dans l'étape courante afin que
+ * output_pattern_resume() reprenne exactement là où il avait été arrêté.
+ *
+ * À la fin du dernier cycle, la sortie conserve l'état de la dernière étape.
  *
  * Si abort_on_fail vaut true, le premier échec d'une étape interrompt le
  * pattern et applique state_on_fail à la sortie.
@@ -168,7 +182,9 @@ bool output_pattern_init(OutputPattern_t *pattern, output_t *output);
  *
  * @note Le module pilote la sortie : l'application ne doit pas appeler
  *       output_set(), output_on() ou output_off() sur cette sortie pendant
- *       l'exécution d'un pattern.
+ *       l'exécution d'un pattern. L'état de l'étape courante est réappliqué à
+ *       chaque appel tant que le pattern est en PATTERN_EXEC_RUNNING ; la
+ *       sortie n'est pas touchée pendant une pause.
  *
  * @param pattern Pattern à mettre à jour.
  * @param now_ms  Instant courant en millisecondes.
@@ -189,6 +205,9 @@ OutputPatternEvent_t output_pattern_update(OutputPattern_t *pattern, time_ms_t n
  * @param now_ms       Instant de démarrage en millisecondes.
  * @return true si les arguments sont valides, false sinon (pointeur NULL,
  *         séquence vide ou longueurs incohérentes).
+ *
+ * @note L'état de la première étape est appliqué immédiatement à la sortie ;
+ *       les cycles repartent de zéro (les états précédents sont effacés).
  */
 bool output_pattern_run(OutputPattern_t *pattern, const OutputPatternSequence_t *sequence, OutputPatternStateBuffer_t *state_buffer, uint16_t cycle_target, bool abort_on_fail, TargetState_t state_on_fail, time_ms_t now_ms);
 
@@ -227,7 +246,10 @@ OutputPatternEvent_t output_pattern_stop(OutputPattern_t *pattern, TargetState_t
  * @return Instantané de l'exécution au moment de la pause.
  *
  * @note Une mise à jour est effectuée avant la mise en pause afin de ne pas
- *       perdre une étape qui se terminerait à cet instant.
+ *       perdre une étape qui se terminerait à cet instant. La sortie reste
+ *       ensuite dans output_state pendant toute la pause, alors que les étapes
+ *       et les cycles continuent d'être consommés. La pause n'a d'effet que
+ *       sur un pattern en PATTERN_EXEC_RUNNING.
  */
 OutputPatternEvent_t output_pattern_pause(OutputPattern_t *pattern, TargetState_t output_state, time_ms_t now_ms);
 
@@ -243,23 +265,23 @@ OutputPatternEvent_t output_pattern_pause(OutputPattern_t *pattern, TargetState_
  */
 OutputPatternEvent_t output_pattern_resume(OutputPattern_t *pattern, time_ms_t now_ms);
 
-/**
- * Indique si toutes les étapes de la séquence ont été traitées.
- *
- * @param pattern Pattern à consulter.
- * @return true si toutes les étapes sont traitées ; des cycles peuvent
- *         toutefois rester à réaliser.
- */
-bool output_pattern_all_completed(const OutputPattern_t *pattern);
+// /**
+//  * Indique si toutes les étapes de la séquence ont été traitées.
+//  *
+//  * @param pattern Pattern à consulter.
+//  * @return true si toutes les étapes sont traitées ; des cycles peuvent
+//  *         toutefois rester à réaliser.
+//  */
+// bool output_pattern_all_completed(const OutputPattern_t *pattern);
 
-/**
- * Indique si le dernier cycle de la séquence est terminé.
- *
- * @param pattern Pattern à consulter.
- * @return false si un cycle est encore en cours, true si le dernier cycle est
- *         terminé.
- */
-bool output_pattern_loop_over(const OutputPattern_t *pattern);
+// /**
+//  * Indique si le dernier cycle de la séquence est terminé.
+//  *
+//  * @param pattern Pattern à consulter.
+//  * @return false si un cycle est encore en cours, true si le dernier cycle est
+//  *         terminé.
+//  */
+// bool output_pattern_loop_over(const OutputPattern_t *pattern);
 
 /**
  * Indique si le pattern est terminé.
@@ -271,14 +293,14 @@ bool output_pattern_loop_over(const OutputPattern_t *pattern);
  */
 bool output_pattern_is_completed(const OutputPattern_t *pattern);
 
-/**
- * Retourne un instantané de l'exécution pour une étape donnée.
- *
- * @param pattern Pattern à consulter.
- * @param step_id Index de l'étape concernée (0 = première).
- * @return Instantané de l'exécution du pattern.
- */
-OutputPatternEvent_t output_pattern_state(const OutputPattern_t *pattern, uint8_t step_id);
+// /**
+//  * Retourne un instantané de l'exécution pour une étape donnée.
+//  *
+//  * @param pattern Pattern à consulter.
+//  * @param step_id Index de l'étape concernée (0 = première).
+//  * @return Instantané de l'exécution du pattern.
+//  */
+// OutputPatternEvent_t output_pattern_state(const OutputPattern_t *pattern, uint8_t step_id);
 
 #ifdef __cplusplus
 }
