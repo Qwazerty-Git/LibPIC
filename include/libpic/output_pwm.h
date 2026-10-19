@@ -38,12 +38,13 @@
 /**
  * Rapport cyclique sentinelle signifiant « ne pas modifier la sortie ».
  *
- * Hors de la plage 0..OUTPUT_PWM_DUTY_MAX, cette valeur ne peut jamais être un
- * rapport cyclique réel ; output_pwm_set_duty() la refuse. Elle est acceptée par
- * output_pwm_pattern_stop(), output_pwm_pattern_pause() et state_on_fail pour
- * laisser la sortie dans son état courant.
+ * Alias de OUTPUT_KEEP, hors de la plage 0..OUTPUT_PWM_DUTY_MAX : cette valeur
+ * ne peut jamais être un rapport cyclique réel et output_pwm_set_duty() la
+ * refuse. Elle est acceptée par output_pwm_pattern_stop(),
+ * output_pwm_pattern_pause() et state_on_fail pour laisser la sortie dans son
+ * état courant.
  */
-#define OUTPUT_PWM_DUTY_KEEP 255
+#define OUTPUT_PWM_DUTY_KEEP OUTPUT_KEEP
 
 #include "commun.h"
 

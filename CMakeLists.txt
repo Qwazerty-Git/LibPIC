@@ -18,7 +18,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     add_compile_options(-Wall -Wextra)
 endif()
 
-add_library(libpic STATIC
+set(LIBPIC_SOURCES
     src/input.c
     src/input_group.c
     src/input_pattern.c
@@ -30,6 +30,17 @@ add_library(libpic STATIC
     src/timer.c
     src/trigger.c
 )
+
+# The XC8/MPLAB toolchain has no usable archiver rule (xc8-ar needs an explicit
+# operation, which the generated CMAKE_C_ARCHIVE_CREATE does not provide), so an
+# embedding firmware project builds the objects directly.
+option(LIBPIC_OBJECT_LIBRARY "Build libpic as an OBJECT library instead of a static one" OFF)
+
+if(LIBPIC_OBJECT_LIBRARY)
+    add_library(libpic OBJECT ${LIBPIC_SOURCES})
+else()
+    add_library(libpic STATIC ${LIBPIC_SOURCES})
+endif()
 
 target_include_directories(libpic PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

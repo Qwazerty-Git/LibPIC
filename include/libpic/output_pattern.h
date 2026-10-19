@@ -21,9 +21,15 @@
  *
  * sizeof est un opérateur du langage : le rapport est une constante évaluée
  * par le compilateur, aucune division n'est exécutée par le PIC et aucune
- * routine de division n'est liée (mesuré sur PIC16F15213 avec XC8 4.00 :
+ * routine de division n'est liée (mesuré sur PIC16F15214 avec XC8 4.00 :
  * environ 70 octets de Flash de moins qu'une division sur variables). Le motif
  * ne s'applique qu'à un vrai tableau, jamais à un pointeur.
+ *
+ * Le déroulement de la séquence (états des étapes, cycles, pause, arrêt,
+ * détection des échecs) est assuré par un noyau commun à output_pattern et à
+ * output_pwm_pattern. Ce module en est l'adaptateur « sortie logique » : il
+ * traduit la consigne value en OUTPUT_ON / OUTPUT_OFF et n'écrit la sortie que
+ * lorsqu'une étape démarre. Le noyau lui-même ne touche jamais la sortie.
  *
  * Le module pilote lui-même la sortie associée lors de
  * output_pattern_init(). Les changements d'état de cette sortie doivent donc
@@ -32,7 +38,7 @@
  * pattern est en cours d'exécution.
  *
  * Un cycle correspond à un parcours complet de la séquence. cycle_target fixe
- * le nombre de cycles à réaliser ; la valeur PATTERN_UNLIMITED_MS (0) désigne
+ * le nombre de cycles à réaliser ; la valeur PATTERN_UNLIMITED_CYCLES (0) désigne
  * un nombre illimité de cycles.
  *
  * Les états d'exécution sont décrits par PatternExecutionState_t :
@@ -140,9 +146,18 @@
 extern "C" {
 #endif
 
-/** Décrit une étape d'un pattern. */
+/**
+ * Décrit une étape d'un pattern.
+ *
+ * value porte la consigne dans le domaine du module :
+ *
+ *   - output_pattern     : 0 = sortie inactive, toute autre valeur = active
+ *                          (true et false restent utilisables : { true, 100 }) ;
+ *   - output_pwm_pattern : rapport cyclique de 0 à OUTPUT_PWM_DUTY_MAX
+ *                          (voir output_pwm_pattern.h).
+ */
 typedef struct {
-    bool active;             /**< État de la sortie durant l'étape (true = actif). */
+    uint8_t value;           /**< Consigne appliquée durant l'étape. */
     time_ms_t duration_ms;   /**< Durée de l'étape, en millisecondes. */
 } OutputPatternStep_t;
 
@@ -152,16 +167,32 @@ typedef struct {
     uint8_t length;                     /**< Nombre d'étapes. */
 } OutputPatternSequence_t;
 
-/** Structure principale d'un pattern de sortie. */
+/**
+ * Adaptateur d'écriture, installé par les fonctions init().
+ *
+ * Traduit une consigne du noyau dans le domaine du module : état logique pour
+ * output_pattern, rapport cyclique pour output_pwm_pattern. Il n'est jamais
+ * appelé avec OUTPUT_KEEP.
+ */
+typedef void (*output_apply_fn)(void *output, uint8_t value);
+
+/**
+ * Structure principale d'un pattern.
+ *
+ * Le noyau est partagé par output_pattern et output_pwm_pattern : seul le
+ * pointeur output et la façon d'appliquer value changent. Une même structure
+ * sert donc aux deux modules, jamais simultanément pour une même instance.
+ */
 typedef struct {
     const OutputPatternSequence_t *sequence;   /**< Séquence à réaliser (transmise par l'utilisateur). */
     OutputPatternStepState_t *states;          /**< États des étapes (en RAM, fournis par l'utilisateur). */
-    output_t *output;                          /**< Sortie pilotée par le pattern. */
+    void *output;                              /**< output_t* ou output_pwm_t* selon le module. */
+    output_apply_fn apply;                     /**< Adaptateur installé par init(). */
     PatternExecutionState_t execution_state;   /**< État d'exécution courant. */
     uint8_t cycle_target;                     /**< Nombre total de cycles à réaliser, 0 = illimité. */
     uint8_t cycles_done;                      /**< Nombre de cycles réalisés. */
     bool abort_on_fail;                        /**< true pour interrompre le pattern au premier échec. */
-    TargetState_t state_on_fail;               /**< État appliqué à la sortie en cas d'échec. */
+    uint8_t state_on_fail;                     /**< Consigne appliquée en cas d'échec, ou OUTPUT_KEEP. */
 
     /* Champs internes, gérés par le module : ne pas modifier directement. */
     bool flag_any_failed;                      /**< Échec détecté depuis le dernier événement. */
@@ -212,16 +243,18 @@ OutputPatternEvent_t output_pattern_update(OutputPattern_t *pattern, time_ms_t n
  *                      éléments (un par étape).
  * @param states_count  Nombre d'éléments de states : doit valoir
  *                      sequence->length (passer ARRAY_SIZE(states)).
- * @param cycle_target  Nombre de cycles à réaliser, PATTERN_UNLIMITED_MS pour
+ * @param cycle_target  Nombre de cycles à réaliser, PATTERN_UNLIMITED_CYCLES pour
  *                      un nombre illimité.
  * @param abort_on_fail true pour interrompre le pattern au premier échec.
- * @param state_on_fail État appliqué à la sortie en cas d'échec.
+ * @param state_on_fail Valeur appliquée à la sortie en cas d'échec :
+ *                      OUTPUT_ON, OUTPUT_OFF ou OUTPUT_KEEP.
  * @param now_ms        Instant de démarrage en millisecondes.
  * @return true si les arguments sont valides, false sinon (pointeur NULL,
  *         séquence vide, taille du tableau d'états incorrecte).
  *
- * @note L'état de la première étape est appliqué immédiatement à la sortie ;
- *       les cycles repartent de zéro (les états précédents sont effacés).
+ * @note La consigne de la première étape est appliquée immédiatement à la
+ *       sortie ; les cycles repartent de zéro (les états précédents sont
+ *       effacés).
  */
 bool output_pattern_run(OutputPattern_t *pattern,
                         const OutputPatternSequence_t *sequence,
@@ -229,7 +262,7 @@ bool output_pattern_run(OutputPattern_t *pattern,
                         uint8_t states_count,
                         uint8_t cycle_target,
                         bool abort_on_fail,
-                        TargetState_t state_on_fail,
+                        uint8_t state_on_fail,
                         time_ms_t now_ms);
 
 /**
@@ -244,25 +277,25 @@ bool output_pattern_run(OutputPattern_t *pattern,
 void output_pattern_reset(OutputPattern_t *pattern);
 
 /**
- * Arrête le pattern et fige la sortie dans l'état demandé.
+ * Arrête le pattern et fige la sortie sur la consigne demandée.
  *
  * @param pattern      Pattern à arrêter.
- * @param output_state État imposé à la sortie (OUTPUT_ON, OUTPUT_OFF ou
- *                     OUTPUT_KEEP pour la conserver).
+ * @param output_state Valeur imposée à la sortie : OUTPUT_ON, OUTPUT_OFF ou
+ *                     OUTPUT_KEEP pour la conserver.
  * @param now_ms       Instant courant en millisecondes.
  * @return Instantané de l'exécution au moment de l'arrêt.
  *
  * @note Le temps déjà écoulé dans l'étape courante est mémorisé afin que
  *       output_pattern_resume() reprenne l'étape là où elle a été figée.
  */
-OutputPatternEvent_t output_pattern_stop(OutputPattern_t *pattern, TargetState_t output_state, time_ms_t now_ms);
+OutputPatternEvent_t output_pattern_stop(OutputPattern_t *pattern, uint8_t output_state, time_ms_t now_ms);
 
 /**
- * Met le pattern en pause et fige la sortie dans l'état demandé.
+ * Met le pattern en pause et fige la sortie sur la consigne demandée.
  *
  * @param pattern      Pattern à mettre en pause.
- * @param output_state État imposé à la sortie (OUTPUT_ON, OUTPUT_OFF ou
- *                     OUTPUT_KEEP pour la conserver).
+ * @param output_state Valeur imposée à la sortie : OUTPUT_ON, OUTPUT_OFF ou
+ *                     OUTPUT_KEEP pour la conserver.
  * @param now_ms       Instant courant en millisecondes.
  * @return Instantané de l'exécution au moment de la pause.
  *
@@ -273,7 +306,7 @@ OutputPatternEvent_t output_pattern_stop(OutputPattern_t *pattern, TargetState_t
  *       d'output_pattern_update() reste donc valable. La pause n'a d'effet que
  *       sur un pattern en PATTERN_EXEC_RUNNING.
  */
-OutputPatternEvent_t output_pattern_pause(OutputPattern_t *pattern, TargetState_t output_state, time_ms_t now_ms);
+OutputPatternEvent_t output_pattern_pause(OutputPattern_t *pattern, uint8_t output_state, time_ms_t now_ms);
 
 /**
  * Reprend le pattern après un arrêt ou une pause.
@@ -293,7 +326,7 @@ OutputPatternEvent_t output_pattern_resume(OutputPattern_t *pattern, time_ms_t n
  * @param pattern Pattern à consulter.
  * @return true si le nombre de cycles demandé a été réalisé ; false si des
  *         cycles restent à faire ou si cycle_target vaut
- *         PATTERN_UNLIMITED_MS.
+ *         PATTERN_UNLIMITED_CYCLES.
  */
 bool output_pattern_is_completed(const OutputPattern_t *pattern);
 

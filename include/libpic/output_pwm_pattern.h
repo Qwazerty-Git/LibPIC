@@ -8,6 +8,18 @@
  * sortie, OUTPUT_PWM_DUTY_MAX l'active en permanence, les valeurs intermédiaires
  * la modulent. Une même séquence peut donc éteindre, allumer ou moduler.
  *
+ * Les types sont ceux de output_pattern.h : le déroulement de la séquence est
+ * assuré par un noyau commun aux deux modules. Seul l'adaptateur diffère : ici
+ * la consigne de chaque étape (value) est un rapport cyclique, écrite avec
+ * output_pwm_set_duty(). La structure OutputPwmPatternStep_t est donc un alias
+ * de OutputPatternStep_t, dont la documentation de value décrit les deux
+ * domaines.
+ *
+ * En conséquence, seule output_pwm_pattern_init() est une fonction propre à ce
+ * module ; update, run, reset, stop, pause, resume et is_completed sont des
+ * macros qui transmettent à leur équivalent output_pattern_*. L'API reste
+ * identique à l'écriture près, pour zéro octet de code dupliqué.
+ *
  * L'application fournit :
  *
  *   - la séquence, généralement déclarée en Flash ;
@@ -137,39 +149,35 @@
 #ifndef LIBPIC_OUTPUT_PWM_PATTERN_H
 #define LIBPIC_OUTPUT_PWM_PATTERN_H
 
+#include "output_pattern.h"
 #include "output_pwm.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/** Décrit une étape d'un pattern PWM. */
-typedef struct {
-    uint8_t value;             /**< Rapport cyclique imposé, de 0 à OUTPUT_PWM_DUTY_MAX. */
-    time_ms_t duration_ms;     /**< Durée de l'étape, en millisecondes. */
-} OutputPwmPatternStep_t;
+/** Étape d'un pattern PWM : value est un rapport cyclique (0 à OUTPUT_PWM_DUTY_MAX). */
+typedef OutputPatternStep_t OutputPwmPatternStep_t;
 
 /** Séquence d'étapes formant un pattern PWM. */
-typedef struct {
-    const OutputPwmPatternStep_t *steps;   /**< Tableau des étapes (en Flash). */
-    uint8_t length;                     /**< Nombre d'étapes. */
-} OutputPwmPatternSequence_t;
+typedef OutputPatternSequence_t OutputPwmPatternSequence_t;
 
-/** Structure principale d'un pattern de sortie PWM. */
+/**
+ * Structure principale d'un pattern PWM.
+ *
+ * base est le noyau commun, identique à celui d'output_pattern ; le bloc rampe
+ * n'est utilisé que pendant une rampe, lancée par output_pwm_pattern_run_ramp().
+ * Les deux modes sont exclusifs : run() abandonne la rampe, run_ramp() abandonne
+ * la séquence en cours.
+ */
 typedef struct {
-    const OutputPwmPatternSequence_t *sequence;   /**< Séquence à réaliser (transmise par l'utilisateur). */
-    OutputPatternStepState_t *states;          /**< États des étapes (en RAM, fournis par l'utilisateur). */
-    output_pwm_t *output;                          /**< Sortie PWM pilotée par le pattern. */
-    PatternExecutionState_t execution_state;   /**< État d'exécution courant. */
-    uint8_t cycle_target;                     /**< Nombre total de cycles à réaliser, 0 = illimité. */
-    uint8_t cycles_done;                      /**< Nombre de cycles réalisés (modulo 256). */
-    bool abort_on_fail;                        /**< true pour interrompre le pattern au premier échec. */
-    uint8_t state_on_fail;               /**< Rapport cyclique appliqué en cas d'échec, ou OUTPUT_PWM_DUTY_KEEP. */
+    OutputPattern_t base;                   /**< Noyau commun (états, cycles, sortie). */
 
-    /* Champs internes, gérés par le module : ne pas modifier directement. */
-    bool flag_any_failed;                      /**< Échec détecté depuis le dernier événement. */
-    bool flag_any_skipped;                     /**< Étape passée depuis le dernier événement. */
-    uint8_t current_step_id;                   /**< Index de l'étape en cours d'exécution. */
+    OutputPatternSequence_t ramp_sequence;  /**< Séquence à une étape (pointe sur ramp_step). */
+    OutputPatternStep_t ramp_step;          /**< Étape courante : value = consigne, duration = pas. */
+    OutputPatternStepState_t ramp_state;    /**< État de l'étape interne, fourni au noyau. */
+    uint8_t ramp_target;                    /**< Rapport cyclique visé, en pourcentage. */
+    uint8_t ramp_step_pct;                  /**< Amplitude d'un pas, en % (0 = pas de rampe). */
 } OutputPwmPattern_t;
 
 /**
@@ -230,6 +238,9 @@ OutputPatternEvent_t output_pwm_pattern_update(OutputPwmPattern_t *pattern, time
  *       Les rapports cycliques des étapes et state_on_fail ne sont pas validés
  *       ici : output_pwm_set_duty() refuse toute valeur supérieure à
  *       OUTPUT_PWM_DUTY_MAX et l'application doit surveiller new_failed.
+ *
+ * @note Une rampe éventuellement en cours est abandonnée : la séquence prend
+ *       le contrôle de la sortie.
  */
 bool output_pwm_pattern_run(OutputPwmPattern_t *pattern,
                         const OutputPwmPatternSequence_t *sequence,
@@ -241,6 +252,41 @@ bool output_pwm_pattern_run(OutputPwmPattern_t *pattern,
                         time_ms_t now_ms);
 
 /**
+ * Fait varier le rapport cyclique par paliers jusqu'à une cible.
+ *
+ * La rampe est un pattern d'une seule étape, ré-armé à chaque palier : elle
+ * part du rapport cyclique courant (output_pwm_get_duty()), avance de
+ * ramp_step_pct toutes les step_ms et s'arrête exactement sur target_duty (le
+ * dernier palier peut être plus court). Elle hérite donc du noyau commun :
+ * cycle PATTERN_EXEC_COMPLETED à l'arrivée, pause qui fige la rampe, resume
+ * qui reprend le palier en cours, et détection new_failed si le tick dépasse
+ * step_ms.
+ *
+ * @param pattern      Pattern à piloter en rampe.
+ * @param target_duty  Rapport cyclique visé (0 à OUTPUT_PWM_DUTY_MAX).
+ * @param step_pct     Amplitude d'un palier, en pourcentage (1 à 100) ; le
+ *                     sens est déduit du rapport cyclique courant.
+ * @param step_ms      Durée d'un palier, en millisecondes (>= 1).
+ * @param now_ms       Instant de départ en millisecondes.
+ * @return true si les arguments sont valides, false sinon (pointeur NULL,
+ *         cible hors plage, step_pct nul ou step_ms nul).
+ *
+ * @note Le rapport cyclique est laissé tel quel si la cible est déjà atteinte.
+ *       Toute séquence en cours est abandonnée, et un appel ultérieur à
+ *       output_pwm_pattern_run() abandonne la rampe : les deux modes sont
+ *       exclusifs, une même sortie n'a jamais deux pilotes.
+ *
+ * @note step_ms doit rester supérieur à la période d'appel de
+ *       output_pwm_pattern_update(), sinon les paliers seront marqués
+ *       OUTPUT_STEP_FAILED.
+ */
+bool output_pwm_pattern_run_ramp(OutputPwmPattern_t *pattern,
+                        uint8_t target_duty,
+                        uint8_t step_pct,
+                        time_ms_t step_ms,
+                        time_ms_t now_ms);
+
+/**
  * Réinitialise toutes les étapes de la séquence en cours et arrête le pattern.
  *
  * @param pattern Pattern à réinitialiser.
@@ -248,6 +294,7 @@ bool output_pwm_pattern_run(OutputPwmPattern_t *pattern,
  * @note Les étapes repassent à OUTPUT_STEP_PENDING et le compteur de cycles
  *       est remis à zéro. L'état d'exécution devient PATTERN_EXEC_STOPPED ;
  *       utiliser output_pwm_pattern_resume() pour relancer le pattern.
+ *       Une rampe en cours est abandonnée.
  */
 void output_pwm_pattern_reset(OutputPwmPattern_t *pattern);
 
@@ -264,7 +311,7 @@ void output_pwm_pattern_reset(OutputPwmPattern_t *pattern);
  * @note Le temps déjà écoulé dans l'étape courante est mémorisé afin que
  *       output_pwm_pattern_resume() reprenne l'étape là où elle a été figée.
  */
-OutputPatternEvent_t output_pwm_pattern_stop(OutputPwmPattern_t *pattern, uint8_t output_state, time_ms_t now_ms);
+#define output_pwm_pattern_stop(pattern, output_state, now_ms) output_pattern_stop(&(pattern)->base, (output_state), (now_ms))
 
 /**
  * Met le pattern en pause et fige la sortie au rapport cyclique demandé.
@@ -283,7 +330,7 @@ OutputPatternEvent_t output_pwm_pattern_stop(OutputPwmPattern_t *pattern, uint8_
  *       d'output_pwm_pattern_update() reste donc valable. La pause n'a d'effet que
  *       sur un pattern en PATTERN_EXEC_RUNNING.
  */
-OutputPatternEvent_t output_pwm_pattern_pause(OutputPwmPattern_t *pattern, uint8_t output_state, time_ms_t now_ms);
+#define output_pwm_pattern_pause(pattern, output_state, now_ms) output_pattern_pause(&(pattern)->base, (output_state), (now_ms))
 
 /**
  * Reprend le pattern après un arrêt ou une pause.
@@ -295,7 +342,7 @@ OutputPatternEvent_t output_pwm_pattern_pause(OutputPwmPattern_t *pattern, uint8
  * @note Un pattern déjà complet reste en PATTERN_EXEC_COMPLETED. Après un
  *       arrêt, le temps écoulé de l'étape courante est restauré.
  */
-OutputPatternEvent_t output_pwm_pattern_resume(OutputPwmPattern_t *pattern, time_ms_t now_ms);
+#define output_pwm_pattern_resume(pattern, now_ms) output_pattern_resume(&(pattern)->base, (now_ms))
 
 /**
  * Indique si le pattern est terminé.
@@ -305,7 +352,7 @@ OutputPatternEvent_t output_pwm_pattern_resume(OutputPwmPattern_t *pattern, time
  *         cycles restent à faire ou si cycle_target vaut
  *         PATTERN_UNLIMITED_CYCLES.
  */
-bool output_pwm_pattern_is_completed(const OutputPwmPattern_t *pattern);
+#define output_pwm_pattern_is_completed(pattern) output_pattern_is_completed(&(pattern)->base)
 
 #ifdef __cplusplus
 }

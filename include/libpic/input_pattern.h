@@ -133,6 +133,7 @@
  *           &button,
  *           &pattern_list,
  *           states,
+ *           ARRAY_SIZE(states),
  *           false)) {
  *       // Configuration invalide ou arguments invalides.
  *   }

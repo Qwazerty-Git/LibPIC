@@ -13,22 +13,30 @@
 extern "C" {
 #endif
 
-/** Valeur cible d'une sortie. Keep : conserve l'état actuel */
+/**
+ * Valeur cible d'une sortie.
+ *
+ * OUTPUT_KEEP est volontairement hors de la plage d'un rapport cyclique
+ * (0 à 100) : une consigne de 2 % ne peut donc jamais être confondue avec
+ * « ne pas modifier la sortie ». Les modules de pattern utilisent cette même
+ * valeur comme sentinelle interne.
+ */
 typedef enum {
-    OUTPUT_OFF,
-    OUTPUT_ON,
-    OUTPUT_KEEP
+    OUTPUT_OFF = 0,
+    OUTPUT_ON = 1,
+    OUTPUT_KEEP = 255
 } TargetState_t;
 
 /**
- * Valeur sentinelle « pas de limite ».
- *
- * - input_pattern : max_ms == PATTERN_UNLIMITED_MS : l'étape n'a pas de durée
- *   maximale et attend l'événement ;
- * - output_pattern / output_pwm_pattern : cycle_target == PATTERN_UNLIMITED_MS :
- *   nombre de cycles illimité.
+ * Durée absente : l'étape de input_pattern n'a pas de durée maximale et attend
+ * l'événement.
  */
 #define PATTERN_UNLIMITED_MS 0
+
+/**
+ * Nombre de cycles illimité : cycle_target de output_pattern et de
+ * output_pwm_pattern.
+ */
 #define PATTERN_UNLIMITED_CYCLES 0
 
 typedef enum {
