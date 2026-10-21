@@ -155,6 +155,10 @@ extern "C" {
  *                          (true et false restent utilisables : { true, 100 }) ;
  *   - output_pwm_pattern : rapport cyclique de 0 à OUTPUT_PWM_DUTY_MAX
  *                          (voir output_pwm_pattern.h).
+ *
+ * Dans les deux cas, OUTPUT_KEEP est une étape sans écriture : la sortie
+ * conserve son état courant pendant toute la durée de l'étape, ce qui permet de
+ * respecter un réglage fait par l'application (ou par une rampe précédente).
  */
 typedef struct {
     uint8_t value;           /**< Consigne appliquée durant l'étape. */

@@ -45,6 +45,27 @@ static void setup_ramp(uint8_t initial_duty)
     output_pwm_pattern_init(&pattern, &pwm);
 }
 
+/* ---------- pas "KEEP" : la sortie n'est pas touchée ---------- */
+static const OutputPwmPatternStep_t keep_steps[] = {
+    { 40, 100 },
+    { OUTPUT_PWM_DUTY_KEEP, 100 },   /* conserve le duty courant */
+    { 80, 100 }
+};
+
+static const OutputPwmPatternSequence_t keep_sequence = { keep_steps, 3 };
+
+static OutputPatternStepState_t keep_states[3];
+
+static void setup_keep(time_ms_t now_ms)
+{
+    g_duty = 0xFFu;
+    g_last_pin = 0xFFFFu;
+
+    output_pwm_init(&pwm, mock_write_pwm, 4, 0, true);
+    output_pwm_pattern_init(&pattern, &pwm);
+    TEST_ASSERT(output_pwm_pattern_run(&pattern, &keep_sequence, keep_states, 3, 1, false, 0, now_ms));
+}
+
 int main(void)
 {
     OutputPatternEvent_t event;
@@ -298,6 +319,27 @@ int main(void)
     TEST_ASSERT(!output_pwm_pattern_run_ramp(&pattern, 50, 10, 0, 80000));
     TEST_ASSERT(!output_pwm_pattern_run_ramp(NULL, 50, 10, 10, 80000));
     TEST_ASSERT(g_duty == 0);
+
+    /* ---------- pas KEEP : la sortie conserve l'état courant ---------- */
+    setup_keep(9000);
+    TEST_ASSERT(g_duty == 40);
+
+    /* L'application change le duty derrière le pattern */
+    TEST_ASSERT(output_pwm_set_duty(&pwm, 90));
+    TEST_ASSERT(g_duty == 90);
+
+    /* Le pas KEEP n'écrit rien : le 90 % survit */
+    event = output_pwm_pattern_update(&pattern, 9100);
+    TEST_ASSERT(event.pattern_state == PATTERN_EXEC_RUNNING);
+    TEST_ASSERT(keep_states[1].state == OUTPUT_STEP_RUNNING);
+    TEST_ASSERT(g_duty == 90);
+
+    /* Le pas suivant reprend la main */
+    (void)output_pwm_pattern_update(&pattern, 9200);
+    TEST_ASSERT(g_duty == 80);
+
+    event = output_pwm_pattern_update(&pattern, 9300);
+    TEST_ASSERT(event.pattern_state == PATTERN_EXEC_COMPLETED);
 
     printf("test_output_pwm_pattern: OK\n");
     return TEST_RESULT();

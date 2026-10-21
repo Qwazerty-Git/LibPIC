@@ -171,6 +171,36 @@ int main(void)
     TEST_ASSERT(event.cycles_done == 2);
     TEST_ASSERT(output_pattern_is_completed(&pattern));
 
+    /* ---------- étape KEEP : la sortie n'est pas touchée ---------- */
+    static const OutputPatternStep_t keep_steps[] = {
+        { true,        100 },   /* actif */
+        { OUTPUT_KEEP, 100 },   /* ne touche à rien */
+        { true,        100 }    /* réécrit : repasse actif */
+    };
+    static const OutputPatternSequence_t keep_sequence = { keep_steps, 3 };
+    static OutputPatternStepState_t keep_states[3];
+
+    g_pin = STATE_LOW;
+    output_init(&out, mock_write, 3, true, false);
+    output_pattern_init(&pattern, &out);
+    TEST_ASSERT(output_pattern_run(&pattern, &keep_sequence, keep_states, 3, 1,
+                                   false, OUTPUT_OFF, 9000));
+    TEST_ASSERT(g_pin == STATE_HIGH);
+
+    /* L'application coupe la sortie derrière le pattern */
+    output_off(&out);
+    TEST_ASSERT(g_pin == STATE_LOW);
+
+    /* Le pas KEEP n'écrit rien : la sortie reste basse */
+    event = output_pattern_update(&pattern, 9100);
+    TEST_ASSERT(event.pattern_state == PATTERN_EXEC_RUNNING);
+    TEST_ASSERT(keep_states[1].state == OUTPUT_STEP_RUNNING);
+    TEST_ASSERT(g_pin == STATE_LOW);
+
+    /* Le pas suivant reprend la main */
+    (void)output_pattern_update(&pattern, 9200);
+    TEST_ASSERT(g_pin == STATE_HIGH);
+
     printf("test_output_pattern: OK\n");
     return TEST_RESULT();
 }
