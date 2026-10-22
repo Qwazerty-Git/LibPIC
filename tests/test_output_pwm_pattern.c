@@ -341,6 +341,31 @@ int main(void)
     event = output_pwm_pattern_update(&pattern, 9300);
     TEST_ASSERT(event.pattern_state == PATTERN_EXEC_COMPLETED);
 
+    /* ---------- rampe : sortie désactivée ou invalide ---------- */
+    /* Désactivée dès le départ : run_ramp refuse, aucune rampe n'est lancée. */
+    g_duty = 0xFFu;
+    output_pwm_init(&pwm, mock_write_pwm, 4, 10, false);
+    output_pwm_pattern_init(&pattern, &pwm);
+    TEST_ASSERT(!output_pwm_pattern_run_ramp(&pattern, 100, 5, 20, 95000));
+
+    /* Désactivée pendant la rampe : elle s'abandonne au lieu de boucler. */
+    setup_ramp(0);
+    TEST_ASSERT(output_pwm_pattern_run_ramp(&pattern, 100, 5, 20, 96000));
+    TEST_ASSERT(g_duty == 5);
+
+    output_pwm_disable(&pwm);
+
+    event = output_pwm_pattern_update(&pattern, 96020);
+    TEST_ASSERT(event.pattern_state == PATTERN_EXEC_ABORDED);
+    TEST_ASSERT(event.new_failed);
+    TEST_ASSERT(g_duty == 5);                       /* plus aucune écriture */
+
+    /* L'abandon n'est signalé qu'une fois et ne boucle plus. */
+    event = output_pwm_pattern_update(&pattern, 96040);
+    TEST_ASSERT(event.pattern_state == PATTERN_EXEC_ABORDED);
+    TEST_ASSERT(!event.new_failed);
+    TEST_ASSERT(g_duty == 5);
+
     printf("test_output_pwm_pattern: OK\n");
     return TEST_RESULT();
 }

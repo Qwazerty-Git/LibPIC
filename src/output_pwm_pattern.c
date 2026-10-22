@@ -76,9 +76,11 @@ OutputPatternEvent_t output_pwm_pattern_update(OutputPwmPattern_t *pattern, time
 
 	if (pattern->ramp_step_pct == 0u) return event;
 
-	// Palier encore en cours, en pause ou à l'arrêt : rien à ré-armer
-	if (pattern->base.execution_state == PATTERN_EXEC_RUNNING ||
-	    pattern->base.execution_state == PATTERN_EXEC_STOPPED) return event;
+	// À l'arrêt, le noyau ne fait rien : le palier ne doit pas être ré-armé.
+	// Sinon, le palier n'est validé que si le noyau a pu avancer : tant que son
+	// état est RUNNING, sa durée n'est pas écoulée.
+	if (pattern->base.execution_state == PATTERN_EXEC_STOPPED ||
+	    pattern->ramp_state.state == OUTPUT_STEP_RUNNING) return event;
 
 	if (pattern->base.execution_state == PATTERN_EXEC_ABORDED) {
 		pattern->ramp_step_pct = 0u;
@@ -88,7 +90,19 @@ OutputPatternEvent_t output_pwm_pattern_update(OutputPwmPattern_t *pattern, time
 	// Palier atteint : on enchaîne jusqu'à la cible
 	uint8_t current = current_duty(pattern);
 
-	if (current == OUTPUT_PWM_DUTY_INVALID || current == pattern->ramp_target) {
+	// Sortie inutilisable : jamais initialisée, désactivée ou valeur corrompue.
+	// La rampe ne peut plus progresser ; on l'abandonne en le signalant plutôt
+	// que de ré-armer indéfiniment le même palier sans jamais rien écrire.
+	if (current == OUTPUT_PWM_DUTY_INVALID ||
+	    !output_pwm_is_enabled((const output_pwm_t *)pattern->base.output)) {
+		pattern->ramp_step_pct = 0u;
+		pattern->base.execution_state = PATTERN_EXEC_ABORDED;
+		event.pattern_state = PATTERN_EXEC_ABORDED;
+		event.new_failed = true;
+		return event;
+	}
+
+	if (current == pattern->ramp_target) {
 		pattern->ramp_step_pct = 0u;
 		return event;
 	}
@@ -130,6 +144,8 @@ bool output_pwm_pattern_run_ramp(OutputPwmPattern_t *pattern,
                         time_ms_t now_ms)
 {
 	if (pattern == NULL ||
+		pattern->base.output == NULL ||
+		!output_pwm_is_enabled((const output_pwm_t *)pattern->base.output) ||
 		target_duty > OUTPUT_PWM_DUTY_MAX ||
 		step_pct == 0u ||
 		step_pct > OUTPUT_PWM_DUTY_MAX ||
