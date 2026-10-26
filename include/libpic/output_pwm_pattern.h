@@ -176,6 +176,9 @@ typedef struct {
     OutputPatternSequence_t ramp_sequence;  /**< Séquence à une étape (pointe sur ramp_step). */
     OutputPatternStep_t ramp_step;          /**< Étape courante : value = consigne, duration = pas. */
     OutputPatternStepState_t ramp_state;    /**< État de l'étape interne, fourni au noyau. */
+    // OutputPatternLevel_t *ramp_level;       /**< Niveau de l'étape interne, fourni au noyau. */
+    // uint8_t ramp_level_count;               /**< Nombre de niveaux de l'étape interne (1). */
+    // uint8_t current_level_id;               /**< Id du niveau actuel, en pourcentage. */
     uint8_t ramp_target;                    /**< Rapport cyclique visé, en pourcentage. */
     uint8_t ramp_step_pct;                  /**< Amplitude d'un pas, en % (0 = pas de rampe). */
 } OutputPwmPattern_t;
@@ -214,6 +217,12 @@ bool output_pwm_pattern_init(OutputPwmPattern_t *pattern, output_pwm_t *output);
  * @return Instantané de l'exécution après la mise à jour.
  */
 OutputPatternEvent_t output_pwm_pattern_update(OutputPwmPattern_t *pattern, time_ms_t now_ms);
+
+// bool output_pwm_pattern_run_level(OutputPwmPattern_t *pattern,
+//                         const uint8_t *levels,
+//                         uint8_t levels_count, 
+                        
+//                         time_ms_t now_ms);
 
 /**
  * Transmet la séquence à exécuter et démarre le pattern.
