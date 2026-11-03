@@ -35,7 +35,7 @@ input_event_t input_update(input_t *input, time_ms_t now_ms)
     }
 
     if ((time_ms_t)(now_ms - input->last_change_time) >= input->debounce_delay_ms) {
-        logical_raw = input->active_high ? (raw == STATE_HIGH) : (raw == STATE_LOW);
+        logical_raw = ((raw == STATE_HIGH) == input->active_high);
         input->state = logical_raw;
     }
 
@@ -43,12 +43,16 @@ input_event_t input_update(input_t *input, time_ms_t now_ms)
     input->last_call_time = now_ms;
     bool reliable = (delta <= input->debounce_delay_ms);
 
+    // Les deux fronts sont calculés une seule fois : la fiabilité a besoin de
+    // savoir si un front a eu lieu, et les recalculer coûtait un test de plus.
+    bool rising = input->state && !previous_state;
+    bool falling = !input->state && previous_state;
 
     return (input_event_t){
-        .rising_edge = input->state && !previous_state,
-        .falling_edge = !input->state && previous_state,
+        .rising_edge = rising,
+        .falling_edge = falling,
         // La fiabilité est bonne si on n'a pas "sauté" le debounce
-        .reliable = ((input->state && !previous_state) || (!input->state && previous_state)) && reliable
+        .reliable = (rising || falling) && reliable
     };
 }
 

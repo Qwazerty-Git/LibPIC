@@ -25,19 +25,21 @@ bool input_pattern_matcher_init(MatcherInputPattern_t *matcher,
     // Parcours par pointeurs plutôt que par indices : sur un petit coeur 8 bits,
     // states[i] et patterns[i] imposent une multiplication par la taille de la
     // structure à chaque tour.
-    const MatcherInputPatternSequence_t *pattern = pattern_list->patterns;
     MatcherInputPatternState_t *state = states;
     bool config_ok = true;
 
-    for (uint8_t i = 0; i < pattern_list->count; i++) {
-
-        bool error = false;
-
 #if LIBPIC_CHECK_CONFIG
+    // Parcours par pointeurs plutôt que par indices : sur un petit coeur 8 bits,
+    // states[i] et patterns[i] imposent une multiplication par la taille de la
+    // structure à chaque tour.
+    const MatcherInputPatternSequence_t *pattern = pattern_list->patterns;
+
+    for (uint8_t i = 0; i < pattern_list->count; i++, pattern++, state++) {
+
         const InputPatternStep_t *step = pattern->steps;
         uint8_t length = pattern->length;
         // Une séquence sans étape n'a aucun sens : elle ne peut jamais aboutir
-        error = (length == 0) || (step == NULL);
+        bool error = (length == 0) || (step == NULL);
 
         // Une durée maximale non nulle doit rester >= min_ms
         for (uint8_t j = 0; !error && j < length; j++) {
@@ -46,17 +48,23 @@ bool input_pattern_matcher_init(MatcherInputPattern_t *matcher,
             }
             step++;
         }
-#endif
 
         state->step_index = 0;
         state->step_start_ms = 0;
         state->error_config = error;
         state->state = error ? IPS_INACTIVE : IPS_ACTIVE;
         config_ok = config_ok && !error;
-
-        pattern++;
-        state++;
     }
+#else
+    // Validation désactivée : les séquences sont supposées correctes, il ne
+    // reste qu'à remettre les états à zéro.
+    for (uint8_t i = 0; i < pattern_list->count; i++, state++) {
+        state->step_index = 0;
+        state->step_start_ms = 0;
+        state->error_config = false;
+        state->state = IPS_ACTIVE;
+    }
+#endif
 
     return config_ok;
 }
