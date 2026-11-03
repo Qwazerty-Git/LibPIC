@@ -143,7 +143,7 @@ MatcherInputPatternResult_t input_pattern_matcher_update(MatcherInputPattern_t *
 
     for (uint8_t i = 0; i < matcher->list->count; i++) {
 
-        uint8_t exec_state = state->state;
+        uint8_t exec_state = (uint8_t)state->state;
 
         // Reconnu lors de l'update précédent : on le fige et on n'y touche plus.
         // Le bit de poids fort couvre IPS_JUST_MATCHED et IPS_MATCHED.
