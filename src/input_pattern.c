@@ -22,50 +22,58 @@ bool input_pattern_matcher_init(MatcherInputPattern_t *matcher,
     matcher->states = states;
     matcher->paused = paused;
 
-    bool any_error = false;
+    // Parcours par pointeurs plutôt que par indices : sur un petit coeur 8 bits,
+    // states[i] et patterns[i] imposent une multiplication par la taille de la
+    // structure à chaque tour.
+    const MatcherInputPatternSequence_t *pattern = pattern_list->patterns;
+    MatcherInputPatternState_t *state = states;
+    bool config_ok = true;
 
-    if (states != NULL && pattern_list != NULL) 
-    {
-        for (uint8_t i = 0; i < pattern_list->count; i++) 
-        {
-            const MatcherInputPatternSequence_t *pattern = &matcher->list->patterns[i];
-            
-            states[i].step_index = 0;
-            states[i].step_start_ms = 0;
-            states[i].state = IPS_ACTIVE;
-            states[i].error_config = false;
+    for (uint8_t i = 0; i < pattern_list->count; i++) {
 
-            if (pattern->length == 0 || pattern->steps == NULL) {
-                states[i].state = IPS_INACTIVE;
-                states[i].error_config = true;
-                any_error = true;
-                continue;
+        bool error = false;
+
+#if LIBPIC_CHECK_CONFIG
+        const InputPatternStep_t *step = pattern->steps;
+        uint8_t length = pattern->length;
+        // Une séquence sans étape n'a aucun sens : elle ne peut jamais aboutir
+        error = (length == 0) || (step == NULL);
+
+        // Une durée maximale non nulle doit rester >= min_ms
+        for (uint8_t j = 0; !error && j < length; j++) {
+            if (step->max_ms != PATTERN_UNLIMITED_MS && step->max_ms < step->min_ms) {
+                error = true;
             }
-
-            for (uint8_t j = 0; j < pattern->length; j++) {
-                if (pattern->steps[j].max_ms != PATTERN_UNLIMITED_MS &&
-                    pattern->steps[j].max_ms < pattern->steps[j].min_ms) {
-                    states[i].state = IPS_INACTIVE;
-                    states[i].error_config = true;
-                    any_error = true;
-                    break;
-                }
-            }     
-
+            step++;
         }
+#endif
+
+        state->step_index = 0;
+        state->step_start_ms = 0;
+        state->error_config = error;
+        state->state = error ? IPS_INACTIVE : IPS_ACTIVE;
+        config_ok = config_ok && !error;
+
+        pattern++;
+        state++;
     }
-    return !any_error;
+
+    return config_ok;
 }
 
 void input_pattern_matcher_reset(MatcherInputPattern_t *matcher)
 {
     if (matcher == NULL || matcher->states == NULL || matcher->list == NULL) return;
 
+    MatcherInputPatternState_t *state = matcher->states;
+
     for (uint8_t i = 0; i < matcher->list->count; i++) {
-        matcher->states[i].step_index = 0;
-        matcher->states[i].step_start_ms = 0;
-        if (!matcher->states[i].error_config) matcher->states[i].state = IPS_ACTIVE;
-        //matcher->states[i].error_config = false; // On conserve les erreurs de configuration précédentes
+        state->step_index = 0;
+        state->step_start_ms = 0;
+        // Les erreurs de configuration sont conservées d'une remise à zéro à
+        // l'autre : un pattern invalide le reste.
+        if (!state->error_config) state->state = IPS_ACTIVE;
+        state++;
     }
 }
 
@@ -95,10 +103,10 @@ bool input_pattern_matcher_all_inactive(const MatcherInputPattern_t *matcher)
 
 bool input_pattern_matcher_is_matched(const MatcherInputPattern_t *matcher, uint8_t index)
 {
-    if (matcher == NULL || matcher->states == NULL || matcher->list == NULL ||
-        index >= matcher->list->count) return false;
+    if (matcher == NULL || matcher->states == NULL || matcher->list == NULL) return false;
+    if (index >= matcher->list->count) return false;
 
-    return matcher->states[index].state & PATTERN_IS_MATCH_MASK;
+    return (matcher->states[index].state & PATTERN_IS_MATCH_MASK) != 0;
 }
 
 MatcherInputPatternResult_t input_pattern_matcher_update(MatcherInputPattern_t *matcher, time_ms_t now_ms)
@@ -117,69 +125,67 @@ MatcherInputPatternResult_t input_pattern_matcher_update(MatcherInputPattern_t *
     // On déclenche l'update de l'input affilié
     input_event_t event = input_update(matcher->input, now_ms);
 
-    // Traiter chaque pattern
+    // Ces deux valeurs ne dépendent pas du pattern : on les calcule une fois
+    // plutôt qu'à chaque tour de boucle.
+    bool has_event = event.rising_edge || event.falling_edge;
+    bool unreliable = has_event && !event.reliable;
+
+    const MatcherInputPatternSequence_t *pattern = matcher->list->patterns;
+    MatcherInputPatternState_t *state = matcher->states;
+
     for (uint8_t i = 0; i < matcher->list->count; i++) {
 
-        MatcherInputPatternState_t *state = &matcher->states[i];
-        const MatcherInputPatternSequence_t *pattern = &matcher->list->patterns[i];
+        uint8_t exec_state = state->state;
 
-        // On s'assure que les patterns en erreur de configuration sont ignorés
-        if (state->error_config) {
-            state->state = IPS_INACTIVE;
+        // Reconnu lors de l'update précédent : on le fige et on n'y touche plus.
+        // Le bit de poids fort couvre IPS_JUST_MATCHED et IPS_MATCHED.
+        if (exec_state & PATTERN_IS_MATCH_MASK) {
+            state->state = IPS_MATCHED;
+            pattern++;
+            state++;
             continue;
         }
 
-        // On bascule les just_matched de l'update précédent en matched
-        if (state->state == IPS_JUST_MATCHED) {
-            state->state = IPS_MATCHED;
-        }    
-        
-        // Ignorer les patterns déjà invalidés ou déjà validés
-        if (state->state == IPS_INACTIVE || state->state == IPS_MATCHED) continue;
+        // Erreur de configuration ou pattern invalidé : rien à faire
+        if (state->error_config || exec_state == IPS_INACTIVE) {
+            pattern++;
+            state++;
+            continue;
+        }
 
         // Déterminer l'état attendu pour l'étape actuelle
         // pair (0, 2, 4) = appui (1), impair (1, 3, 5) = relâchement (0)
-        bool expected_event = (state->step_index & 1u)? event.rising_edge : event.falling_edge;
-        bool has_event = event.rising_edge || event.falling_edge;
-        bool event_is_unreliable = has_event && !event.reliable;
-        
+        bool expected_event = (state->step_index & 1u) ? event.rising_edge : event.falling_edge;
+
         // Le pattern attend son premier appui : seul un rising_edge le démarre
-        if (state->state == IPS_ACTIVE) 
-        {
-            if (event.rising_edge && !event.reliable) {
-                state->state = IPS_INACTIVE;
-                continue;
+        if (exec_state == IPS_ACTIVE) {
+            if (event.rising_edge) {
+                state->step_start_ms = now_ms;
+                state->state = event.reliable ? IPS_PENDING : IPS_INACTIVE;
             }
-
-            if (!event.rising_edge) {
-                continue;
-            }
-
-            state->step_start_ms = now_ms;
-            state->state = IPS_PENDING;
+            pattern++;
+            state++;
             continue;
-        } 
-        else if ((!expected_event && has_event) || event_is_unreliable) 
-        {
+        }
+
+        if ((!expected_event && has_event) || unreliable) {
             state->state = IPS_INACTIVE;
+            pattern++;
+            state++;
             continue;
         }
 
         // On calcule le temps écoulé depuis le début de l'étape actuelle
         time_ms_t elapsed_ms = (time_ms_t)(now_ms - state->step_start_ms);
+        const InputPatternStep_t *step = &pattern->steps[state->step_index];
 
-        const InputPatternStep_t *step =&pattern->steps[state->step_index];
-        bool is_last_step = state->step_index == (uint8_t)(pattern->length - 1);
-        bool can_match_by_time = is_last_step && step->max_ms == PATTERN_UNLIMITED_MS && elapsed_ms >= step->min_ms;
-        
         if (step->max_ms != PATTERN_UNLIMITED_MS && elapsed_ms > step->max_ms) {
             state->state = IPS_INACTIVE;
         }
         else if (has_event) {
             if (elapsed_ms < step->min_ms) {
                 state->state = IPS_INACTIVE;
-            }
-            else {
+            } else {
                 state->step_index++;
 
                 if (state->step_index >= pattern->length) {
@@ -190,13 +196,19 @@ MatcherInputPatternResult_t input_pattern_matcher_update(MatcherInputPattern_t *
                     state->state = IPS_PENDING;
                 }
             }
-        } 
-        else if (can_match_by_time) {
+        }
+        else if (state->step_index == (uint8_t)(pattern->length - 1) &&
+                 step->max_ms == PATTERN_UNLIMITED_MS &&
+                 elapsed_ms >= step->min_ms) {
+            // Dernière étape sans limite de durée : l'appui long est reconnu
+            // dès que min_ms est atteint, sans attendre le relâchement.
             state->state = IPS_JUST_MATCHED;
             result.any_matched = true;
         }
-    }
 
+        pattern++;
+        state++;
+    }
 
     return result;
 }

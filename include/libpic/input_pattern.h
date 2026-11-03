@@ -164,6 +164,21 @@
 /** Bit de poids fort d'un état de pattern, positionné lorsque le pattern est reconnu. */
 #define PATTERN_IS_MATCH_MASK 0x80
 
+/**
+ * Active la validation des séquences au moment de input_pattern_matcher_init().
+ *
+ * Sur un petit microcontroleur, cette validation coute cher en Flash alors que
+ * les sequences sont generalement des tables `const` figees a la compilation.
+ * La mettre a 0 supprime la validation a l'execution (les patterns sont alors
+ * supposes corrects) : c'est le role des tests unitaires, ou d'un controle a la
+ * compilation dans l'application.
+ *
+ * Valeur par defaut : 1 (validation active).
+ */
+#ifndef LIBPIC_CHECK_CONFIG
+#define LIBPIC_CHECK_CONFIG 1
+#endif
+
 #include "input.h"
 
 #ifdef __cplusplus
